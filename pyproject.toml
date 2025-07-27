@@ -28,5 +28,6 @@ dependencies = [
     "scikit-learn",
     "plotly",
     "accelerate",
-    "matplotlib"
+    "matplotlib",
+    "cmaes",
 ]

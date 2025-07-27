@@ -7,7 +7,7 @@ from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel
 from torch.optim.lr_scheduler import LambdaLR
 from utils import Muon, Hooked, Input
-from einops import einsum
+from einops import einsum, rearrange
 
 from quimb.tensor import Tensor, TensorNetwork
 
@@ -25,14 +25,16 @@ class Config(PretrainedConfig):
         layer: int | None = None,       # Layer to hook the model at
         d_model: int | None = None,     # Model dimension at the hook point
         expansion: int = 8,             # Expansion factor for the autoencoder
+        alpha: float = 0.0,             # Batch sparsity
         tags: list = [],                # Tags for the model
         **kwargs
     ):
         super().__init__(**kwargs)
         
         self.layer = layer
-        self.expansion = expansion
         self.d_model = d_model
+        self.expansion = expansion
+        self.alpha = alpha
         self.tags = tags
         self.kwargs = kwargs
     
@@ -66,6 +68,8 @@ class Autoencoder(PreTrainedModel):
         torch.nn.init.xavier_uniform_(self.left.data)
         torch.nn.init.xavier_uniform_(self.right.data)
         torch.nn.init.xavier_uniform_(self.down.data)
+
+        self.steps = 0
         
     @classmethod
     def from_pretrained(cls, repo, model, device='cuda', **kwargs):
@@ -88,7 +92,7 @@ class Autoencoder(PreTrainedModel):
         prefix = model.name_or_path.split('/')[1]
         coder.load_state_dict(torch.load(f"{root}/{prefix}-{coder.config.name}.pt", weights_only=True, map_location=device))
         return coder.to(device)
-    
+
     def encoder(self, side='in', dtype=torch.float16):
         return Tensor(self.right.type(dtype), inds=[f'f:{side}', f'{side}:1'], tags=['R']) \
              & Tensor(self.left.type(dtype), inds=[f'f:{side}', f'{side}:0'], tags=['L'])
@@ -112,16 +116,15 @@ class Autoencoder(PreTrainedModel):
         sub = self.mixer() & self.encoder('out')
         mask = Tensor(self.mask, inds=['f:0', 'mask'], tags=['M']) | Tensor(self.mask, inds=['f:1', 'mask'], tags=['M'])
         return sub.reindex({'f:in': 'f:0'}) | sub.reindex({'f:in': 'f:1'}) | (mask / self.config.d_features)
-        
-    # def loss(self, x):
-    #     [Tensor(x, inds=['batch', 'seq', f'in:{i}']) for i in range(2)]
-
+    
     def forward(self, input_ids, **kwargs):
         # Normalise the inputs using the L2 norm instead of RMS norm
         with torch.no_grad():
             _, acts = self.hooked(input_ids[..., :256])
             x = acts['x'].type(self.dtype)
             x = x * x.pow(2).sum(-1, keepdim=True).rsqrt()
+        
+        self.steps += 1
         
         # Compute various hidden activations (f = features, h = hidden, m = middle)
         f = einsum(self.left, self.right, x, x, "feat in1, feat in2, ... in1, ... in2 -> ... feat")
@@ -138,11 +141,15 @@ class Autoencoder(PreTrainedModel):
         cross = einsum(f, f, self.down, self.down, self.mask, w, "... f1, ... f2, h f1, h f2, f1 w, w -> ...")
         const = einsum(x, x, "... d, ... d -> ...").pow(2)
         
+        flat = rearrange(f, "... feat -> (...) feat")
+        reg = (torch.arange().flip(0) * (flat.norm(p=1, dim=0) / flat.norm(p=2, dim=0) - 1.0)).mean() / (flat.shape[0]**0.5 - 1.0)
         mse = (selv - 2*cross + const).mean()
-        if wandb.run is not None: wandb.log(dict(mse=mse), commit=False)
         
-        return dict(loss=mse, features=f)
-    
+        if wandb.run is not None: wandb.log(dict(mse=mse, reg=reg, rnorm=self.right.norm(), dnorm=self.down.norm()), commit=False)
+
+        loss = mse + self.config.alpha * min(1.0, self.steps / 500.0) * reg
+        return dict(loss=loss, features=f)
+
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         params = [self.left, self.right, self.down]
         
