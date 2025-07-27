@@ -1,0 +1,122 @@
+import torch
+import wandb
+import os
+
+from torch import nn
+from transformers import PretrainedConfig, PreTrainedModel
+from torch.optim.lr_scheduler import LambdaLR
+from utils import Muon, Hooked, Input
+from einops import einsum
+
+from quimb.tensor import Tensor, TensorNetwork
+
+class Config(PretrainedConfig):
+    """Simple configuration class for the model below."""
+    def __init__(
+        self,
+        layer: int | None = None,       # Layer to hook the model at
+        d_model: int | None = None,     # Model dimension at the hook point
+        expansion: int = 8,             # Expansion factor for the TICA
+        tags: list = [],                # Tags for the model
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        
+        self.layer = layer
+        self.expansion = expansion
+        self.d_model = d_model
+        self.tags = tags
+        self.kwargs = kwargs
+    
+    @property
+    def d_features(self):
+        return int(self.d_model * self.expansion)
+    
+    @property
+    def d_hidden(self):
+        return int(self.d_model * 2)
+    
+    @property
+    def name(self):
+        return '-'.join([f"l{self.layer}", f"x{self.expansion}", *self.tags])
+    
+class Autoencoder(PreTrainedModel):
+    """A sparse tensor network autoencoder class."""
+    def __init__(self, model, config) -> None:
+        super().__init__(config)
+        
+        layer = model.body[config.layer] if hasattr(model, 'body') else model.model.layers[config.layer]
+        self.hooked = Hooked(model, x=Input(layer))
+        
+        self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
+        self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
+        self.down = nn.Parameter(torch.empty(config.d_hidden, config.d_features))
+        
+        self.mask = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)))
+    
+        torch.nn.init.xavier_uniform_(self.left.data)
+        torch.nn.init.xavier_uniform_(self.right.data)
+        torch.nn.init.xavier_uniform_(self.down.data)
+        
+    @classmethod
+    def from_pretrained(cls, repo, model, device='cuda', **kwargs):
+        config = Config.from_pretrained(repo, repo=repo)
+        return super(Autoencoder, Autoencoder).from_pretrained(repo, model=model, config=config, device_map=device, **kwargs)
+    
+    @staticmethod
+    def from_config(model, **kwargs):
+        d_model = getattr(model.config, 'hidden_size', None) or getattr(model.config, 'd_model', None)
+        return Autoencoder(model, Config(d_model=d_model, **kwargs))
+    
+    def save(self, root="weights"):
+        os.makedirs(root, exist_ok=True)
+        torch.save(self.state_dict(), f"{root}/{self.hooked.model.name_or_path}-{self.config.name}.pt")
+    
+    @staticmethod
+    def load(model, layer, expansion, root="weights", device='cuda', **kwargs):
+        tica = Autoencoder.from_config(model, layer=layer, expansion=expansion, **kwargs)
+        tica.load_state_dict(torch.load(f"{root}/{model.name_or_path}-{tica.config.name}.pt", weights_only=True, map_location=device))
+        return tica.to(device)
+    
+    def encoder(self, dtype=torch.float32, side='in'):
+        return Tensor(self.right.type(dtype), inds=[f'f:{side}', f'{side}:1'], tags=['R']) \
+             & Tensor(self.left.type(dtype), inds=[f'f:{side}', f'{side}:0'], tags=['L'])
+
+    def mixer(self, dtype=torch.float32):
+        return Tensor(self.down.type(dtype), inds=['f:hid', 'f:in'], tags=['D'])\
+            
+
+    def forward(self, input_ids, **kwargs):
+        # Normalise the inputs using the L2 norm instead of RMS norm
+        with torch.no_grad():
+            _, acts = self.hooked(input_ids[..., :256])
+            x = acts['x'].type(self.dtype)
+            x = x * x.pow(2).sum(-1, keepdim=True).rsqrt()
+        
+        # Compute various hidden activations (f = features, h = hidden, m = middle)
+        f = einsum(self.left, self.right, x, x, "feat in1, feat in2, ... in1, ... in2 -> ... feat")
+        
+        # Compute the linearised interaction matrix
+        inner = (self.left @ self.left.T) * (self.right @ self.right.T)
+        inner = einsum(self.down, self.down, self.down, self.down, inner, "md id, md od, mu iu, mu ou, od ou -> id iu")
+        inner = inner * (self.mask @ self.mask.T) / self.config.d_features
+        
+        w = torch.ones_like(self.mask[0]) / self.config.d_features
+        
+        # Compute the constituent parts of the loss
+        selv = einsum(f, f, inner, "... in1, ... in2, in1 in2 -> ...")
+        cross = einsum(f, f, self.down, self.down, self.mask, w, "... f1, ... f2, h f1, h f2, f1 w, w -> ...")
+        const = einsum(x, x, "... d, ... d -> ...").pow(2)
+        
+        mse = (selv - 2*cross + const).mean()
+        if wandb.run is not None: wandb.log(dict(mse=mse), commit=False)
+        
+        return dict(loss=mse, features=f)
+    
+    def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
+        params = [self.left, self.right, self.down]
+        
+        optimizer = Muon(params, lr=lr, weight_decay=0, momentum=0.95, nesterov=False)
+        scheduler = LambdaLR(optimizer, lambda step: min(1.0, (1.0 / (cooldown - 1.0)) * ((step / max_steps) - 1.0)))
+        
+        return optimizer, scheduler
