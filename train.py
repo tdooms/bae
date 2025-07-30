@@ -23,8 +23,8 @@ model = torch.compile(model)
 train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
 train = train.map(tokenize, batched=True)
 # %%
-for i in range(24):
-    coder = Autoencoder.from_config(model, layer=i, expansion=16, alpha=0.5, tags=[])
+for i in [18]:
+    coder = Autoencoder.from_config(model, layer=i, expansion=16, alpha=0.2, tags=[])
     project = "coder"
     # project = None
 

@@ -148,7 +148,7 @@ class Autoencoder(PreTrainedModel):
         # reg = (flat.norm(p=1, dim=0) / flat.norm(p=2, dim=0) - 1.0).mean() / (flat.shape[0]**0.5 - 1.0)
         mse = (selv - 2*cross + const).mean()
         
-        if wandb.run is not None: wandb.log(dict(mse=mse, reg=w[-1].item(), rnorm=self.right.norm(), dnorm=self.down.norm()), commit=False)
+        if wandb.run is not None: wandb.log(dict(mse=mse, reg=hoyer.mean(), rnorm=self.right.norm(), dnorm=self.down.norm()), commit=False)
 
         # loss = mse + self.config.alpha * min(1.0, self.steps / 500.0) * reg
         loss = mse

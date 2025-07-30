@@ -39,9 +39,7 @@ q = einsum(coder.down, coder.down, "mid out, mid inp -> out inp")
 q = q - torch.diag_embed(torch.diagonal(q, dim1=-2, dim2=-1))
 q.topk(dim=1, k=2).values[:, 0].topk(k=50).indices
 # %%
-# idx = 812  # capital how/How
-# idx = 7973   # according to?
-idx = 2697
+idx = 744
 q = einsum(coder.down, coder.down, "mid out, mid inp -> out inp")
 px.histogram(q[idx].cpu()).show()
 vis(q[idx].topk(k=3).indices.tolist(), k=5)

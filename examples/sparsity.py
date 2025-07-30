@@ -43,14 +43,13 @@ import gc
 torch.cuda.empty_cache()
 gc.collect()
 # %%
-
 def hoyer(x, dim=-1):
     return (x.norm(p=1, dim=dim) / x.norm(p=2, dim=dim) - 1.0) / (x.shape[-1]**0.5 - 1.0)
 
 w = hoyer(rearrange(acts, "... d -> (...) d").T.cpu())
 # w = w[acts.norm(dim=(0, 1)).cpu() > 0.1]
 px.histogram(w).show()
-px.scatter(x=list(range(len(w))), y=w.cpu(), template='plotly_white', labels=dict(x="Index", y="Hoyer Norm")).show()
+px.scatter(x=list(range(len(w))), y=w.cpu(), template='plotly_white', labels=dict(x="Index", y="Hoyer Norm"), opacity=0.3).show()
 print(w.topk(k=10, largest=False))
 # %%
 px.histogram(acts[20, 20].cpu(), log_y=True)
