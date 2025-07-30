@@ -122,22 +122,24 @@ class Autoencoder(PreTrainedModel):
         # Compute various hidden activations (f = features, h = hidden, m = middle)
         f = einsum(self.left, self.right, x, x, "feat in1, feat in2, ... in1, ... in2 -> ... feat")
         
+        self.steps += 1
+        alpha = self.config.alpha * max(min(1.0, self.steps / 400.0), 0.0)
+        hoyer = (f.norm(p=1, dim=(0, 1)) / f.norm(p=2, dim=(0, 1)) - 1.0).mean() / ((f.size(0) * f.size(1))**0.5 - 1.0)
+        reg = 1.0 - alpha * hoyer
+
         # Compute the linearised interaction matrix
         inner = (self.left @ self.left.T) * (self.right @ self.right.T)
         inner = einsum(self.down, self.down, self.down, self.down, inner, "md id, md od, mu iu, mu ou, od ou -> id iu")
         
         # Compute the constituent parts of the loss
-        selv = einsum(f, f, inner, "... in1, ... in2, in1 in2 -> ...")
-        cross = einsum(f, f, self.down, self.down, "... f1, ... f2, h f1, h f2 -> ...")
+        selv = einsum(f, f, inner, "... in1, ... in2, in1 in2 -> ...") * reg
+        cross = einsum(f, f, self.down, self.down, "... f1, ... f2, h f1, h f2 -> ...") * reg
         const = einsum(x, x, "... d, ... d -> ...").pow(2)
         
-        reg = (f.norm(p=1, dim=(0, 1)) / f.norm(p=2, dim=(0, 1)) - 1.0).mean() / ((f.size(0) * f.size(1))**0.5 - 1.0)
         mse = (selv - 2*cross + const).mean()
-        if wandb.run is not None: wandb.log(dict(mse=mse, reg=reg), commit=False)
+        if wandb.run is not None: wandb.log(dict(mse=mse, reg=hoyer), commit=False)
 
-        self.steps += 1
-        alpha = self.config.alpha * max(min(1.0, self.steps / 400.0), 0.0)
-        return dict(loss=mse + alpha * reg, features=f, x=x)
+        return dict(loss=mse, features=f, x=x)
 
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         params = [self.left, self.right, self.down]

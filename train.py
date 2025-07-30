@@ -6,7 +6,8 @@ from transformers import TrainingArguments, Trainer, AutoModelForCausalLM, AutoT
 from datasets import load_dataset
 # from coders.incremental import Autoencoder
 # from coders.vsparse import Autoencoder
-from coders.sparse import Autoencoder
+# from coders.sparse import Autoencoder
+from coders.vsparse import Autoencoder
 
 import torch
 import wandb
