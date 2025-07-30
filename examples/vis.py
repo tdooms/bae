@@ -26,5 +26,5 @@ coder = Autoencoder.load(model, layer=18, expansion=16, root='weights').half()
 # %%
 vis = Vis(coder, tokenizer, dataset, max_steps=2**6, batch_size=2**5)
 # %%
-vis(list(range(100, 120)), dark=True, k=3)
+vis(list(range(20, 40)), dark=True, k=3)
 # %%

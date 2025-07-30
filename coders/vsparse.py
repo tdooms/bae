@@ -25,16 +25,16 @@ class Config(PretrainedConfig):
         layer: int | None = None,       # Layer to hook the model at
         d_model: int | None = None,     # Model dimension at the hook point
         expansion: int = 8,             # Expansion factor for the autoencoder
-        alpha: float = 0.0,             # Batch sparsity
         tags: list = [],                # Tags for the model
+        alpha: float = 0.0,             # Batch sparsity
         **kwargs
     ):
         super().__init__(**kwargs)
         
         self.layer = layer
-        self.d_model = d_model
         self.expansion = expansion
         self.alpha = alpha
+        self.d_model = d_model
         self.tags = tags
         self.kwargs = kwargs
     
@@ -62,13 +62,10 @@ class Autoencoder(PreTrainedModel):
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.down = nn.Parameter(torch.empty(config.d_hidden, config.d_features))
         
-        # TODO: I'm sure we can avoid materialising this mask
-        self.mask = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
-    
         torch.nn.init.xavier_uniform_(self.left.data)
         torch.nn.init.xavier_uniform_(self.right.data)
         torch.nn.init.xavier_uniform_(self.down.data)
-
+        
         self.steps = -100
         
     @classmethod
@@ -92,7 +89,7 @@ class Autoencoder(PreTrainedModel):
         prefix = model.name_or_path.split('/')[1]
         coder.load_state_dict(torch.load(f"{root}/{prefix}-{coder.config.name}.pt", weights_only=True, map_location=device))
         return coder.to(device)
-
+    
     def encoder(self, side='in', dtype=torch.float16):
         return Tensor(self.right.type(dtype), inds=[f'f:{side}', f'{side}:1'], tags=['R']) \
              & Tensor(self.left.type(dtype), inds=[f'f:{side}', f'{side}:0'], tags=['L'])
@@ -111,12 +108,10 @@ class Autoencoder(PreTrainedModel):
 
     def network(self, dtype=torch.float16):
         return self.sym('in', dtype) & self.sym('out', dtype) & self.mixer(dtype)
-    
-    def kernel(self):
-        sub = self.mixer() & self.encoder('out')
-        mask = Tensor(self.mask, inds=['f:0', 'mask'], tags=['M']) | Tensor(self.mask, inds=['f:1', 'mask'], tags=['M'])
-        return sub.reindex({'f:in': 'f:0'}) | sub.reindex({'f:in': 'f:1'}) | (mask / self.config.d_features)
-    
+        
+    # def loss(self, x):
+    #     [Tensor(x, inds=['batch', 'seq', f'in:{i}']) for i in range(2)]
+
     def forward(self, input_ids, **kwargs):
         # Normalise the inputs using the L2 norm instead of RMS norm
         with torch.no_grad():
@@ -127,32 +122,22 @@ class Autoencoder(PreTrainedModel):
         # Compute various hidden activations (f = features, h = hidden, m = middle)
         f = einsum(self.left, self.right, x, x, "feat in1, feat in2, ... in1, ... in2 -> ... feat")
         
-        self.steps += 1
-        alpha = self.config.alpha * max(min(1.0, self.steps / 400.0), 0.0)
-        
-        counts = torch.arange(self.config.d_features, dtype=x.dtype, device=x.device) + 1
-        hoyer = (f.norm(p=1, dim=(0, 1)) / f.norm(p=2, dim=(0, 1)) - 1.0) / ((f.size(0)*f.size(1))**0.5 - 1.0)
-        w = (1 - alpha * (hoyer.cumsum(dim=0) / counts)) / self.config.d_features
-
         # Compute the linearised interaction matrix
         inner = (self.left @ self.left.T) * (self.right @ self.right.T)
         inner = einsum(self.down, self.down, self.down, self.down, inner, "md id, md od, mu iu, mu ou, od ou -> id iu")
-        # inner = einsum(inner, self.mask, self.mask, w, "f1 f2, f1 m, m f2, m -> f1 f2")
-        inner = inner * (self.mask @ torch.diag(w) @ self.mask.T)
         
         # Compute the constituent parts of the loss
         selv = einsum(f, f, inner, "... in1, ... in2, in1 in2 -> ...")
-        cross = einsum(f, f, self.down, self.down, self.mask, w, "... f1, ... f2, h f1, h f2, f1 w, w -> ...")
+        cross = einsum(f, f, self.down, self.down, "... f1, ... f2, h f1, h f2 -> ...")
         const = einsum(x, x, "... d, ... d -> ...").pow(2)
         
-        # reg = (flat.norm(p=1, dim=0) / flat.norm(p=2, dim=0) - 1.0).mean() / (flat.shape[0]**0.5 - 1.0)
+        reg = (f.norm(p=1, dim=(0, 1)) / f.norm(p=2, dim=(0, 1)) - 1.0).mean() / ((f.size(0) * f.size(1))**0.5 - 1.0)
         mse = (selv - 2*cross + const).mean()
-        
-        if wandb.run is not None: wandb.log(dict(mse=mse, reg=w[-1].item(), rnorm=self.right.norm(), dnorm=self.down.norm()), commit=False)
+        if wandb.run is not None: wandb.log(dict(mse=mse, reg=reg), commit=False)
 
-        # loss = mse + self.config.alpha * min(1.0, self.steps / 500.0) * reg
-        loss = mse
-        return dict(loss=loss, features=f)
+        self.steps += 1
+        alpha = self.config.alpha * max(min(1.0, self.steps / 400.0), 0.0)
+        return dict(loss=mse + alpha * reg, features=f, x=x)
 
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         params = [self.left, self.right, self.down]

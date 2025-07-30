@@ -5,6 +5,7 @@
 from transformers import TrainingArguments, Trainer, AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 # from coders.incremental import Autoencoder
+# from coders.vsparse import Autoencoder
 from coders.sparse import Autoencoder
 
 import torch
@@ -22,9 +23,10 @@ model = torch.compile(model)
 train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
 train = train.map(tokenize, batched=True)
 # %%
-for i in [17]:
-    coder = Autoencoder.from_config(model, layer=i, expansion=16, alpha=0.1, tags=[])
+for i in range(24):
+    coder = Autoencoder.from_config(model, layer=i, expansion=16, alpha=0.5, tags=[])
     project = "coder"
+    # project = None
 
     args = TrainingArguments(
         output_dir="_checkpoints",
@@ -54,7 +56,7 @@ for i in [17]:
     os.environ["WANDB_CONSOLE"] = "wrap"
 
     trainer.train()
-    # coder.save()
+    coder.save()
 
     wandb.finish()
 # %%

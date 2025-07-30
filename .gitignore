@@ -4,3 +4,6 @@
 /_logs
 /uv.lock
 /weights
+
+utils/__pycache__
+coders/__pycache__
