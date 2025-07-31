@@ -60,7 +60,6 @@ class Autoencoder(PreTrainedModel):
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.down = nn.Parameter(torch.empty(config.d_hidden, config.d_features))
         
-        # TODO: I'm sure we can avoid materialising this mask
         self.mask = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
     
         torch.nn.init.xavier_uniform_(self.left.data)

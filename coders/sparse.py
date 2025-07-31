@@ -95,19 +95,19 @@ class Autoencoder(PreTrainedModel):
 
     def encoder(self, side='in', dtype=torch.float16):
         return Tensor(self.right.type(dtype), inds=[f'f:{side}', f'{side}:1'], tags=['R']) \
-             & Tensor(self.left.type(dtype), inds=[f'f:{side}', f'{side}:0'], tags=['L'])
+             | Tensor(self.left.type(dtype), inds=[f'f:{side}', f'{side}:0'], tags=['L'])
 
     def sym(self, side='in', dtype=torch.float16):
         u = torch.stack([self.left + self.right, self.left - self.right], dim=0).type(dtype)
         s = torch.tensor([1, -1], device=u.device, dtype=dtype)
         
         return Tensor(u, inds=[f"s:{side}", f'f:{side}', f'{side}:0'], tags=['U']) \
-             & Tensor(u, inds=[f"s:{side}", f'f:{side}', f'{side}:1'], tags=['U']) \
-             & Tensor(s, inds=[f's:{side}'], tags=['S'])
+             | Tensor(u, inds=[f"s:{side}", f'f:{side}', f'{side}:1'], tags=['U']) \
+             | Tensor(s, inds=[f's:{side}'], tags=['S'])
 
     def mixer(self, dtype=torch.float16):
         return Tensor(self.down.type(dtype), inds=['f:hid', 'f:in'], tags=['D']) \
-             & Tensor(self.down.type(dtype), inds=['f:hid', 'f:out'], tags=['D'])
+             | Tensor(self.down.type(dtype), inds=['f:hid', 'f:out'], tags=['D'])
 
     def network(self, dtype=torch.float16):
         return self.sym('in', dtype) & self.sym('out', dtype) & self.mixer(dtype)

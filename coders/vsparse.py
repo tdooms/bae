@@ -7,8 +7,7 @@ from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel
 from torch.optim.lr_scheduler import LambdaLR
 from utils import Muon, Hooked, Input
-from einops import einsum, rearrange
-
+from einops import einsum
 from quimb.tensor import Tensor, TensorNetwork
 
 class Placeholder:
@@ -49,11 +48,12 @@ class Config(PretrainedConfig):
     @property
     def name(self):
         return '-'.join([f"l{self.layer}", f"x{self.expansion}", *self.tags])
-    
+
 class Autoencoder(PreTrainedModel):
     """A sparse tensor network autoencoder class."""
     def __init__(self, model, config) -> None:
         super().__init__(config)
+        self.steps = 0
         
         layer = model.body[config.layer] if hasattr(model, 'body') else model.model.layers[config.layer]
         self.hooked = Hooked(model, x=Input(layer))
@@ -65,9 +65,25 @@ class Autoencoder(PreTrainedModel):
         torch.nn.init.xavier_uniform_(self.left.data)
         torch.nn.init.xavier_uniform_(self.right.data)
         torch.nn.init.xavier_uniform_(self.down.data)
+
+    def _like(self):
+        return dict(device=self.left.device, dtype=self.left.dtype)
+    
+    def alpha(self):
+        self.steps += 1
+        return self.config.alpha * max(min(1.0, (self.steps - 100) / 512.0), 0.0)
+    
+    def kernel(self):
+        return self.down @ ((self.left @ self.left.T) * (self.right @ self.right.T)) @ self.down.T
+    
+    def sym(self, mod='in'):
+        u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
         
-        self.steps = -100
-        
+        return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:0'], tags=['U']) \
+             & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
+             & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
+             & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
+    
     @classmethod
     def from_pretrained(cls, repo, model, device='cuda', **kwargs):
         config = Config.from_pretrained(repo, repo=repo)
@@ -89,28 +105,6 @@ class Autoencoder(PreTrainedModel):
         prefix = model.name_or_path.split('/')[1]
         coder.load_state_dict(torch.load(f"{root}/{prefix}-{coder.config.name}.pt", weights_only=True, map_location=device))
         return coder.to(device)
-    
-    def encoder(self, side='in', dtype=torch.float16):
-        return Tensor(self.right.type(dtype), inds=[f'f:{side}', f'{side}:1'], tags=['R']) \
-             & Tensor(self.left.type(dtype), inds=[f'f:{side}', f'{side}:0'], tags=['L'])
-
-    def sym(self, side='in', dtype=torch.float16):
-        u = torch.stack([self.left + self.right, self.left - self.right], dim=0).type(dtype)
-        s = torch.tensor([1, -1], device=u.device, dtype=dtype)
-        
-        return Tensor(u, inds=[f"s:{side}", f'f:{side}', f'{side}:0'], tags=['U']) \
-             & Tensor(u, inds=[f"s:{side}", f'f:{side}', f'{side}:1'], tags=['U']) \
-             & Tensor(s, inds=[f's:{side}'], tags=['S'])
-
-    def mixer(self, dtype=torch.float16):
-        return Tensor(self.down.type(dtype), inds=['f:hid', 'f:in'], tags=['D']) \
-             & Tensor(self.down.type(dtype), inds=['f:hid', 'f:out'], tags=['D'])
-
-    def network(self, dtype=torch.float16):
-        return self.sym('in', dtype) & self.sym('out', dtype) & self.mixer(dtype)
-        
-    # def loss(self, x):
-    #     [Tensor(x, inds=['batch', 'seq', f'in:{i}']) for i in range(2)]
 
     def forward(self, input_ids, **kwargs):
         # Normalise the inputs using the L2 norm instead of RMS norm
@@ -119,27 +113,25 @@ class Autoencoder(PreTrainedModel):
             x = acts['x'].type(self.dtype)
             x = x * x.pow(2).sum(-1, keepdim=True).rsqrt()
         
-        # Compute various hidden activations (f = features, h = hidden, m = middle)
+        # Compute the features as well as hidden/clustered activations
         f = einsum(self.left, self.right, x, x, "feat in1, feat in2, ... in1, ... in2 -> ... feat")
+        h = einsum(self.down, f, "hid feat, ... feat -> ... hid")
         
-        self.steps += 1
-        alpha = self.config.alpha * max(min(1.0, self.steps / 400.0), 0.0)
+        # Compute the regularisation term
         hoyer = (f.norm(p=1, dim=(0, 1)) / f.norm(p=2, dim=(0, 1)) - 1.0).mean() / ((f.size(0) * f.size(1))**0.5 - 1.0)
-        reg = 1.0 - alpha * hoyer
-
-        # Compute the linearised interaction matrix
-        inner = (self.left @ self.left.T) * (self.right @ self.right.T)
-        inner = einsum(self.down, self.down, self.down, self.down, inner, "md id, md od, mu iu, mu ou, od ou -> id iu")
+        reg = 1.0 - self.alpha() * hoyer
         
-        # Compute the constituent parts of the loss
-        selv = einsum(f, f, inner, "... in1, ... in2, in1 in2 -> ...") * reg
-        cross = einsum(f, f, self.down, self.down, "... f1, ... f2, h f1, h f2 -> ...") * reg
-        const = einsum(x, x, "... d, ... d -> ...").pow(2)
+        # Compute the self and cross terms of the loss
+        selv = einsum(h, h, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
+        cross = h.pow(2).sum(-1)
         
-        mse = (selv - 2*cross + const).mean()
+        # Compute the reconstruction and the loss; the last term is always one since we normalised the inputs
+        mse = (selv - 2*cross + 1.0).mean()
+        loss = (selv*reg - 2*cross*reg + 1.0).mean()
+        
+        # Log and return the loss and statistics
         if wandb.run is not None: wandb.log(dict(mse=mse, reg=hoyer), commit=False)
-
-        return dict(loss=mse, features=f, x=x)
+        return dict(loss=loss, features=f, x=x)
 
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         params = [self.left, self.right, self.down]

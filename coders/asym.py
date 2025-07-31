@@ -57,17 +57,31 @@ class Autoencoder(PreTrainedModel):
         layer = model.body[config.layer] if hasattr(model, 'body') else model.model.layers[config.layer]
         self.hooked = Hooked(model, x=Input(layer))
         
-        self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
-        self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
-        self.down = nn.Parameter(torch.empty(config.d_hidden, config.d_features))
+        self.left1 = nn.Parameter(torch.empty(config.d_features, config.d_model))
+        self.right1 = nn.Parameter(torch.empty(config.d_features, config.d_model))
+        self.left2 = nn.Parameter(torch.empty(config.d_features, config.d_model))
+        self.right2 = nn.Parameter(torch.empty(config.d_features, config.d_model))
         
-        torch.nn.init.xavier_uniform_(self.left.data)
-        torch.nn.init.xavier_uniform_(self.right.data)
+        self.down = nn.Parameter(torch.empty(config.d_hidden, config.d_features))
+
+        torch.nn.init.xavier_uniform_(self.left1.data)
+        torch.nn.init.xavier_uniform_(self.right1.data)
+        torch.nn.init.xavier_uniform_(self.left2.data)
+        torch.nn.init.xavier_uniform_(self.right2.data)
+        
         torch.nn.init.xavier_uniform_(self.down.data)
+
+        # x = torch.empty((32, 256, 1024*16), device="meta")
+        # self.contract = "bsx,bsy,ul,dl,ur,dr,cu,cy,cd,cx->bs"
+        # self.path, _ = oe.contract_path(self.contract, x, x, *self.tensors(), optimize='auto-hq')
 
     def alpha(self):
         self.steps += 1
         return self.config.alpha * max(min(1.0, (self.steps - 100) / 512.0), 0.0)
+    
+    # def tensors(self):
+    #     return [self.left.data, self.left.data, self.right.data, self.right.data, self.down.data, self.down.data, self.down.data, self.down.data]
+    # # selv = oe.contract(self.contract, f, f, *self.tensors(), optimize=self.path)
     
     @classmethod
     def from_pretrained(cls, repo, model, device='cuda', **kwargs):
@@ -99,31 +113,32 @@ class Autoencoder(PreTrainedModel):
             x = x * x.pow(2).sum(-1, keepdim=True).rsqrt()
         
         # Compute the features
-        f = einsum(self.left, self.right, x, x, "feat in1, feat in2, ... in1, ... in2 -> ... feat")
-        
+        f1 = einsum(self.left1, self.right1, x, x, "feat in1, feat in2, ... in1, ... in2 -> ... feat")
+        f2 = einsum(self.left2, self.right2, x, x, "feat in1, feat in2, ... in1, ... in2 -> ... feat")
+
         # Compute the regularisation term
-        hoyer = [((x.norm(p=1, dim=-1) / x.norm(p=2, dim=-1) - 1.0).mean() / (x.size(-1)**0.5 - 1.0)).pow(2) for x in [self.right, self.left, self.down.T]]
-        hoyer = sum(hoyer) / len(hoyer)
-        reg = 1.0 - self.alpha() * hoyer
+        hoyer1 = (f1.norm(p=1, dim=(0, 1)) / f1.norm(p=2, dim=(0, 1)) - 1.0).mean() / ((f1.size(0) * f1.size(1))**0.5 - 1.0)
+        hoyer2 = (f2.norm(p=1, dim=(0, 1)) / f2.norm(p=2, dim=(0, 1)) - 1.0).mean() / ((f2.size(0) * f2.size(1))**0.5 - 1.0)
+        reg = 1.0 - self.alpha() * (hoyer1 + hoyer2) / 2.0
 
         # Compute the reconstruction kernel and the hidden activations
-        kernel = (self.left @ self.left.T) * (self.right @ self.right.T)
-        h = einsum(self.down, self.down, f, "cluster hid, cluster feat, ... feat -> ... hid")
-        
+        kernel = (self.left2 @ self.left2.T) * (self.right2 @ self.right2.T)
+        h = einsum(self.down, self.down, f1, "cluster hid, cluster feat, ... feat -> ... hid")
+
         # Compute the self and cross terms of the loss
         selv = einsum(h, h, kernel, "... in1, ... in2, in1 in2 -> ...")
-        cross = einsum(f, self.down, "... f, q f -> ... q").pow(2).sum(-1)
-        
+        cross = einsum(f1, self.down, self.down, f2, "... f1, q f1, q f2, ... f2 -> ...")
+
         # Compute the reconstruction and the loss
         mse = (selv - 2*cross + 1.0).mean()
         loss = (selv*reg - 2*cross*reg + 1.0).mean()
-        
-        if wandb.run is not None: wandb.log(dict(mse=mse, reg=hoyer), commit=False)
-        return dict(loss=loss, features=f, x=x)
+
+        if wandb.run is not None: wandb.log(dict(mse=mse, reg=(hoyer1 + hoyer2)/2.0), commit=False)
+        return dict(loss=loss)
 
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
-        params = [self.left, self.right, self.down]
-        
+        params = [self.left1, self.right1, self.left2, self.right2, self.down]
+
         optimizer = Muon(params, lr=lr, weight_decay=0, momentum=0.95, nesterov=False)
         scheduler = LambdaLR(optimizer, lambda step: min(1.0, (1.0 / (cooldown - 1.0)) * ((step / max_steps) - 1.0)))
         

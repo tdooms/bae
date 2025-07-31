@@ -65,3 +65,6 @@ import plotly.express as px
 norm = (coder.left.norm(dim=-1) * coder.right.norm(dim=-1) * coder.down.norm(dim=0)).detach()
 px.scatter(y=norm.cpu(), x=list(range(len(norm))), template='plotly_white', labels=dict(x="Index", y="Norm"))
 # %%
+import plotly.express as px
+px.imshow(coder.down.detach().cpu()[:256, :256])
+# px.histogram((coder.down.detach().cpu().abs() > 0.01).sum(dim=0).minimum(torch.tensor(1000)))

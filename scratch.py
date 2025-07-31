@@ -24,3 +24,4 @@ px.imshow(q, color_continuous_scale='RdBu', color_continuous_midpoint=0)
 f = torch.ones(5, 5)
 b = einsum(f, f, f, "out mid, mid in1, mid in2 -> out in1 in2")
 px.imshow(b, color_continuous_scale='RdBu', color_continuous_midpoint=0, facet_col=0)
+# %%
