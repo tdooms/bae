@@ -6,7 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset, load_dataset
 
 from utils.vis import Vis
-from coders.sparse import Autoencoder
+from coders.isparse import Autoencoder
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from einops import rearrange

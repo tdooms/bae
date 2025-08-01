@@ -11,12 +11,24 @@ from einops import einsum
 
 from quimb.tensor import Tensor, TensorNetwork
 
+
+
 class Placeholder:
     """Use as a placeholder for a model when constrained for memory (there's probably a better way to do this)."""
     def __init__(self, d_model, name):
         self.config = Config(d_model=d_model)
         self.body = [nn.Identity()] * 24
         self.name_or_path = name
+        
+        
+# def min_kernel(x, A, weight) -> torch.Tensor:
+#     L = torch.tril(A)
+    
+#     u = einsum(A, x, "hid inp, ... inp -> ... hid")
+#     v = einsum(L, x, "out inp, inp -> out")
+#     w = einsum(L, x * weight, "out inp, inp -> out")
+
+#     return (x * w + (weight * x) * (u - v)).sum()
 
 class Config(PretrainedConfig):
     """Simple configuration class for the model below."""
@@ -47,7 +59,7 @@ class Config(PretrainedConfig):
     @property
     def name(self):
         return '-'.join([f"l{self.layer}", f"x{self.expansion}", *self.tags])
-    
+
 class Autoencoder(PreTrainedModel):
     """A sparse tensor network autoencoder class."""
     def __init__(self, model, config) -> None:
@@ -60,7 +72,11 @@ class Autoencoder(PreTrainedModel):
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.down = nn.Parameter(torch.empty(config.d_hidden, config.d_features))
         
-        self.mask = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
+        # This currently can't be changed since it's hardcoded in the constraint function.
+        self.weights = nn.Buffer((torch.arange(1, config.d_features + 1).flip(0) / self.config.d_features).sqrt(), persistent=False)
+        
+        mask = torch.triu(torch.ones(config.d_features, config.d_features))
+        self.mask = nn.Buffer((mask @ mask.T) / config.d_features, persistent=False)
     
         torch.nn.init.xavier_uniform_(self.left.data)
         torch.nn.init.xavier_uniform_(self.right.data)
@@ -80,7 +96,7 @@ class Autoencoder(PreTrainedModel):
         os.makedirs(root, exist_ok=True)
         prefix = self.hooked.model.name_or_path.split('/')[1]
         torch.save(self.state_dict(), f"{root}/{prefix}-{self.config.name}.pt")
-    
+        
     @staticmethod
     def load(model, layer, expansion, root="weights", device='cuda', **kwargs):
         coder = Autoencoder.from_config(model, layer=layer, expansion=expansion, **kwargs)
@@ -88,32 +104,11 @@ class Autoencoder(PreTrainedModel):
         coder.load_state_dict(torch.load(f"{root}/{prefix}-{coder.config.name}.pt", weights_only=True, map_location=device))
         return coder.to(device)
     
-    def encoder(self, side='in', dtype=torch.float16):
-        return Tensor(self.right.type(dtype), inds=[f'f:{side}', f'{side}:1'], tags=['R']) \
-             & Tensor(self.left.type(dtype), inds=[f'f:{side}', f'{side}:0'], tags=['L'])
-
-    def sym(self, side='in', dtype=torch.float16):
-        u = torch.stack([self.left + self.right, self.left - self.right], dim=0).type(dtype)
-        s = torch.tensor([1, -1], device=u.device, dtype=dtype)
-        
-        return Tensor(u, inds=[f"s:{side}", f'f:{side}', f'{side}:0'], tags=['U']) \
-             & Tensor(u, inds=[f"s:{side}", f'f:{side}', f'{side}:1'], tags=['U']) \
-             & Tensor(s, inds=[f's:{side}'], tags=['S'])
-
-    def mixer(self, dtype=torch.float16):
-        return Tensor(self.down.type(dtype), inds=['f:hid', 'f:in'], tags=['D']) \
-             & Tensor(self.down.type(dtype), inds=['f:hid', 'f:out'], tags=['D'])
-
-    def network(self, dtype=torch.float16):
-        return self.sym('in', dtype) & self.sym('out', dtype) & self.mixer(dtype)
+    def _like(self):
+        return dict(device=self.left.device, dtype=self.left.dtype)
     
     def kernel(self):
-        sub = self.mixer() & self.encoder('out')
-        mask = Tensor(self.mask, inds=['f:0', 'mask'], tags=['M']) | Tensor(self.mask, inds=['f:1', 'mask'], tags=['M'])
-        return sub.reindex({'f:in': 'f:0'}) | sub.reindex({'f:in': 'f:1'}) | (mask / self.config.d_features)
-        
-    # def loss(self, x):
-    #     [Tensor(x, inds=['batch', 'seq', f'in:{i}']) for i in range(2)]
+        return self.down @ ((self.left @ self.left.T) * (self.right @ self.right.T)) @ self.down.T
 
     def forward(self, input_ids, **kwargs):
         # Normalise the inputs using the L2 norm instead of RMS norm
@@ -122,25 +117,21 @@ class Autoencoder(PreTrainedModel):
             x = acts['x'].type(self.dtype)
             x = x * x.pow(2).sum(-1, keepdim=True).rsqrt()
         
-        # Compute various hidden activations (f = features, h = hidden, m = middle)
+        # Compute the features as well as hidden/clustered activations
         f = einsum(self.left, self.right, x, x, "feat in1, feat in2, ... in1, ... in2 -> ... feat")
+        o = einsum(self.down, self.weights, f, "hid feat, feat, ... feat -> ... hid")
         
-        # Compute the linearised interaction matrix
-        inner = (self.left @ self.left.T) * (self.right @ self.right.T)
-        inner = einsum(self.down, self.down, self.down, self.down, inner, "md id, md od, mu iu, mu ou, od ou -> id iu")
-        inner = inner * (self.mask @ self.mask.T) / self.config.d_features
+        kernel = self.kernel()
+        reg = einsum(f, f, self.down, self.down, kernel, self.mask, "... f1, ... f2, h1 f1, h2 f2, h1 h2, f1 f2 -> ...")
+        loss = (reg - 2 * o.pow(2).sum(-1) + 1.0).mean()
         
-        w = torch.ones_like(self.mask[0]) / self.config.d_features
+        with torch.no_grad():
+            h = einsum(self.down, f, "hid feat, ... feat -> ... hid")
+            selv = einsum(h, h, kernel, "... h1, ... h2, h1 h2 -> ...")
+            mse = (selv - 2 * h.pow(2).sum(-1) + 1.0).mean()
         
-        # Compute the constituent parts of the loss
-        selv = einsum(f, f, inner, "... in1, ... in2, in1 in2 -> ...")
-        cross = einsum(f, f, self.down, self.down, self.mask, w, "... f1, ... f2, h f1, h f2, f1 w, w -> ...")
-        const = einsum(x, x, "... d, ... d -> ...").pow(2)
-        
-        mse = (selv - 2*cross + const).mean()
         if wandb.run is not None: wandb.log(dict(mse=mse), commit=False)
-        
-        return dict(loss=mse, features=f)
+        return dict(loss=loss, features=f)
     
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         params = [self.left, self.right, self.down]

@@ -2,7 +2,7 @@
 %load_ext autoreload
 %autoreload 2
 
-from coders.vsparse import Autoencoder, Placeholder
+from coders.asparse import Autoencoder, Placeholder
 from tqdm import tqdm
 from itertools import product
 from tqdm import tqdm
@@ -12,7 +12,9 @@ import torch
 # %%
 torch.set_grad_enabled(False)
 model = Placeholder(d_model=1024, name="Qwen/Qwen3-0.6B-Base")
-coders = [Autoencoder.load(model, layer=i, expansion=16, root='weights/vanilla').half() for i in tqdm(range(24))]
+
+# coders = [Autoencoder.load(model, layer=i, expansion=16, root='weights/vanilla').half() for i in tqdm(range(24))]
+coders = [Autoencoder.load(model, layer=18, expansion=16, root='weights/asparse_sweep', tags=[str(i)]).half() for i in tqdm(range(1, 11))]
 # %%
 # Compute the similarity between all pairs of coders, this can take a few minutes.
 # Similarity is computed the normalised MSE between the tensors representing the autocoders.

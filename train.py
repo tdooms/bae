@@ -7,11 +7,14 @@ from datasets import load_dataset
 # from coders.incremental import Autoencoder
 # from coders.vsparse import Autoencoder
 # from coders.sparse import Autoencoder
-from coders.vsparse import Autoencoder
+from coders.asparse import Autoencoder
 
 import torch
 import wandb
 import os
+
+from torch.backends import opt_einsum
+opt_einsum.strategy = "auto-hq"
 # %%
 name = "Qwen/Qwen3-0.6B-Base"
 
@@ -24,8 +27,8 @@ model = torch.compile(model)
 train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
 train = train.map(tokenize, batched=True)
 # %%
-for i in [18]:
-    coder = Autoencoder.from_config(model, layer=i, expansion=16, alpha=0.2, tags=[])
+for a in [1.0]:
+    coder = Autoencoder.from_config(model, layer=18, expansion=16, alpha=a, tags=[str(int(a * 10))])
     project = "coder"
     # project = None
 
@@ -60,6 +63,10 @@ for i in [18]:
     coder.save()
 
     wandb.finish()
+# %%
+import gc
+gc.collect()
+torch.cuda.empty_cache()
 # %%
 import plotly.express as px
 norm = (coder.left.norm(dim=-1) * coder.right.norm(dim=-1) * coder.down.norm(dim=0)).detach()
