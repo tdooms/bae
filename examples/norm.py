@@ -3,7 +3,7 @@
 %autoreload 2
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from coders.asparse import Autoencoder, Placeholder
+from oldcoders.asparse import Autoencoder, Placeholder
 from datasets import Dataset, load_dataset
 from torch.utils.data import DataLoader
 

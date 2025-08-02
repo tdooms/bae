@@ -6,7 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset, load_dataset
 
 from utils.vis import Vis
-from coders.isparse import Autoencoder
+from oldcoders.isparse import Autoencoder
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from einops import rearrange
@@ -25,7 +25,7 @@ dataset = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="t
 dataset = Dataset.from_list(list(dataset.take(2**12))).with_format("torch")
 dataset = dataset.map(tokenize, batched=True)
 # %%
-coder = Autoencoder.load(model, layer=18, expansion=16, root='weights').half()
+coder = Autoencoder.load(model, layer=18, expansion=16, root='weights/sweep', tags=['10']).half()
 # %%
 max_steps = 2**2
 loader = DataLoader(dataset, batch_size=32, shuffle=False)
@@ -48,7 +48,7 @@ def hoyer(x, dim=-1):
 
 w = hoyer(rearrange(acts, "... d -> (...) d").T.cpu())
 # w = w[acts.norm(dim=(0, 1)).cpu() > 0.1]
-px.histogram(w).show()
+px.histogram(w, log_y=False).show()
 px.scatter(x=list(range(len(w))), y=w.cpu(), template='plotly_white', labels=dict(x="Index", y="Hoyer Norm"), opacity=0.3).show()
 print(w.topk(k=10, largest=False))
 # %%

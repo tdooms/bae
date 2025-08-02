@@ -6,7 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset, load_dataset
 
 from utils.vis import Vis
-from coders.isparse import Autoencoder
+from oldcoders.isparse import Autoencoder
 
 import plotly.express as px
 import torch

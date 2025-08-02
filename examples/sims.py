@@ -2,7 +2,7 @@
 %load_ext autoreload
 %autoreload 2
 
-from coders.asparse import Autoencoder, Placeholder
+from oldcoders.asparse import Autoencoder, Placeholder
 from tqdm import tqdm
 from itertools import product
 from tqdm import tqdm

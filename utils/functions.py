@@ -12,7 +12,7 @@ def hoyer(x: Float[Tensor, "... x"], dim: int = -1):
     size = x.size(dim) if isinstance(dim, int) else product(x.size(d) for d in dim)
     return ((size**0.5 - 1.0) - (x.norm(p=1, dim=dim) / x.norm(p=2, dim=dim))) / (size**0.5 - 1.0)
 
-def generalized_participation_ratio(v:  Float[Tensor, "... x"], p: float = 4.0) ->  Float[Tensor, "..."]:
+def generalized_effective_dimension(v:  Float[Tensor, "... x"], p: float = 4.0) ->  Float[Tensor, "..."]:
     """Computes the rough amount of 'big' elements in a vector."""
     vp = v.abs().pow(p)
     return vp.sum(dim=-1).pow(2) / vp.pow(2).sum(dim=-1)

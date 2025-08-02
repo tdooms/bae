@@ -1,9 +1,8 @@
 /.venv
-/__pycache__
 /_checkpoints
 /_logs
 /uv.lock
 /weights
 
-utils/__pycache__
-coders/__pycache__
+__pycache__/
+*.pyc
