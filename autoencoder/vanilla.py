@@ -21,7 +21,7 @@ class Vanilla(Autoencoder, kind="vanilla"):
     
     @staticmethod
     def from_config(model, **kwargs):
-        return Autoencoder(model, Config(kind="vanilla", **kwargs))
+        return Vanilla(model, Config(kind="vanilla", **kwargs))
     
     def kernel(self):
         return (self.left @ self.left.T) * (self.right @ self.right.T)

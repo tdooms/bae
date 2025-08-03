@@ -25,15 +25,16 @@ train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="tra
 train = train.map(tokenize, batched=True)
 # %%
 for a in [0.2]:
-    coder = Autoencoder.from_config(model, "rainbow", layer=18, expansion=16, alpha=a)
-    # project = "coder"
-    project = None
+    coder = Autoencoder.from_config(model, "vanilla", layer=18, expansion=16, alpha=a, tags=[])
+    project = "coder"
+    # project = None
 
     args = TrainingArguments(
+        seed=0,
         output_dir="_checkpoints",
         logging_steps=10,
         # save_total_limit=5,
-        save_steps=512,
+        save_steps=128,
         per_device_train_batch_size=32,
         do_eval=False,
         report_to="wandb" if project else "none",
@@ -42,7 +43,6 @@ for a in [0.2]:
         gradient_accumulation_steps=2,
         max_steps=2**10,
         max_grad_norm=1000,
-        num_train_epochs=1,
         run_name=f"{model.name_or_path.split('/')[-1]}-{coder.config.name}",
     )
 

@@ -24,7 +24,7 @@ class Manifold:
         eigvals = self.eigvals[..., inds].half()
         
         loader = DataLoader(self.dataset, batch_size=batch_size, shuffle=False)
-        vals, acts, inputs, outputs = [], [], [], []
+        vals, feats, inputs, outputs = [], [], [], []
 
         for batch, _ in tqdm(zip(loader, range(max_steps)), total=max_steps):
             batch = {k: v.to(self.hooked.device) for k, v in batch.items() if k in ['input_ids', 'attention_mask']}    
@@ -33,14 +33,14 @@ class Manifold:
             inputs += [batch['input_ids']]
             outputs += [cache[0].logits.argmax(dim=-1)]
             
-            x = cache[1]['x']
-            v = einsum(x / x.pow(2).sum(-1, keepdim=True).sqrt(), eigvecs, "... x, x v -> ... v")
+            acts = cache[1]['acts']
+            v = einsum(acts / acts.pow(2).sum(-1, keepdim=True).sqrt(), eigvecs, "... x, x v -> ... v")
             
-            acts += [v]
+            feats += [v]
             vals += [einsum(v.pow(2), eigvals, "... v, v -> ...")]
         
         self.vals = torch.stack(vals, dim=0).flatten(0, 2)
-        self.acts = torch.stack(acts, dim=0).flatten(0, 2)
+        self.feats = torch.stack(feats, dim=0).flatten(0, 2)
         self.inputs = torch.stack(inputs, dim=0).flatten(0, 2)
         self.outputs = torch.stack(outputs, dim=0).flatten(0, 2)
     
@@ -50,7 +50,7 @@ class Manifold:
         min_vals, min_inds = self.vals[:total].topk(k=k, dim=0, largest=False)
         top_vals, top_inds = torch.cat([max_vals, min_vals], dim=0), torch.cat([max_inds, min_inds], dim=0)
 
-        top_acts = self.acts[top_inds]
+        top_feats = self.feats[top_inds]
 
         # Compute the current token string combined with the model prediction token (inp -> out)
         inp_toks = self.tokenizer.convert_ids_to_tokens(self.inputs[top_inds].cpu())
@@ -58,9 +58,9 @@ class Manifold:
         tokens = [(i + ' -> ' + o).replace('Ġ', ' ') for i, o in zip(inp_toks, out_toks)]
 
         fig = px.scatter_3d(
-            x=top_acts[:, 0].cpu(),
-            y=top_acts[:, 1].cpu(),
-            z=top_acts[:, 2].cpu(),
+            x=top_feats[:, 0].cpu(),
+            y=top_feats[:, 1].cpu(),
+            z=top_feats[:, 2].cpu(),
             color=top_vals.cpu(),
             color_continuous_midpoint=0.0,
             color_continuous_scale="RdBu",

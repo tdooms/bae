@@ -8,11 +8,12 @@ from transformers import PretrainedConfig, PreTrainedModel
 from utils import Hooked, Input
 from abc import abstractmethod
 from safetensors.torch import save_file, load_file
+from types import SimpleNamespace
 
 class Placeholder:
     """Use as a placeholder for a model when constrained for memory (there's probably a better way to do this)."""
     def __init__(self, d_model, name, device="cuda", dtype=torch.float16):
-        self.config = Config(d_model=d_model)
+        self.config = SimpleNamespace(hidden_size=d_model)
         self.body = [nn.Identity()] * 100
         self.name_or_path = name
         
@@ -34,8 +35,8 @@ class Config(PretrainedConfig):
         **kwargs
     ):
         super().__init__(**kwargs)
-        assert layer is not None, "Layer must be specified for the autoencoder."
-        assert d_model is not None, "Model dimension must be specified for the autoencoder."
+        # assert layer is not None, "Layer must be specified for the autoencoder."
+        # assert d_model is not None, "Model dimension must be specified for the autoencoder."
         
         self.layer = layer
         self.d_model = d_model
@@ -104,7 +105,7 @@ class Autoencoder(PreTrainedModel):
         
         state = load_file(f"{folder}/model.safetensors", device=device)
         coder.load_state_dict(state)
-        return coder
+        return coder.to(device)
 
     @abstractmethod
     def loss(self, acts, features): pass
@@ -118,7 +119,7 @@ class Autoencoder(PreTrainedModel):
     @abstractmethod
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5): pass
     
-    def forward(self, input_ids, **kwargs):
+    def forward(self, input_ids, attention_mask, **kwargs):
         self.steps += 1
         
         # Normalise the inputs using the L2 norm (not RMS norm)

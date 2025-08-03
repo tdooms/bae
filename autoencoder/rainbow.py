@@ -13,7 +13,7 @@ class Rainbow(Autoencoder, kind="rainbow"):
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
         
-        self.weights = nn.Buffer((torch.arange(1, config.d_features + 1) / config.d_features).sqrt(), persistent=False)
+        self.weights = nn.Buffer((torch.arange(1, config.d_features + 1).flip(0) / config.d_features).sqrt(), persistent=False)
         self.mask = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
 
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
@@ -34,6 +34,14 @@ class Rainbow(Autoencoder, kind="rainbow"):
     def features(self, acts):
         return einsum(self.left, acts, "feat inp, ... inp -> ... feat") * einsum(self.right, acts, "feat inp, ... inp -> ... feat")
     
+    def network(self, mod='inp'):
+        u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
+        
+        return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:0'], tags=['U']) \
+             & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
+             & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
+             & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
+             
     def loss(self, acts):
         f = self.features(acts)
         o = einsum(self.down, self.weights, f, "hid feat, feat, ... feat -> ... hid")

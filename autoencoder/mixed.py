@@ -30,7 +30,7 @@ class Mixed(Autoencoder, kind="mixed"):
 
     def network(self, mod='inp'):
         u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
-
+        
         return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:0'], tags=['U']) \
              & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
              & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
@@ -41,7 +41,7 @@ class Mixed(Autoencoder, kind="mixed"):
 
     def loss(self, acts):
         f = self.features(acts)
-        h = self.down @ f
+        h = einsum(self.down, f, "hid feat, ... feat -> ... hid")
         
         # Compute the regularisation term
         hoyer = (f.norm(p=1, dim=(0, 1)) / f.norm(p=2, dim=(0, 1)) - 1.0).mean() / ((f.size(0) * f.size(1))**0.5 - 1.0)
