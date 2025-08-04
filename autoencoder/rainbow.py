@@ -6,15 +6,14 @@ from einops import einsum
 from quimb.tensor import Tensor
 
 from utils import Muon
-from autoencoder.base import Autoencoder, Config
+from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
 
 class Rainbow(Autoencoder, kind="rainbow"):
     """A tensor-based autoencoder class which mixes its features."""
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
-        
-        self.weights = nn.Buffer((torch.arange(1, config.d_features + 1).flip(0) / config.d_features).sqrt(), persistent=False)
-        self.mask = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
+        self.triu = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
+        self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1), persistent=False)
 
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
@@ -32,7 +31,7 @@ class Rainbow(Autoencoder, kind="rainbow"):
         return self.down @ ((self.left @ self.left.T) * (self.right @ self.right.T)) @ self.down.T
     
     def features(self, acts):
-        return einsum(self.left, acts, "feat inp, ... inp -> ... feat") * einsum(self.right, acts, "feat inp, ... inp -> ... feat")
+        return nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right)
     
     def network(self, mod='inp'):
         u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
@@ -41,27 +40,32 @@ class Rainbow(Autoencoder, kind="rainbow"):
              & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
              & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
-             
-    def loss(self, acts):
+    
+    @torch.compile(fullgraph=True)
+    def loss(self, acts, mask, alpha):
+        # Compute the features
         f = self.features(acts)
-        o = einsum(self.down, self.weights, f, "hid feat, feat, ... feat -> ... hid")
         
         # Compute the regularisation term
-        counts = torch.arange(1, self.config.d_features + 1, **self._like())
-        hoyer = (f.norm(p=1, dim=(0, 1)) / f.norm(p=2, dim=(0, 1)) - 1.0) / ((f.size(0)*f.size(1))**0.5 - 1.0)
-        reg = (1 - self.alpha() * (hoyer.cumsum(dim=0) / counts)) / self.config.d_features
-        inner = einsum(self.mask, reg, self.mask, "out hid, hid, inp hid -> out inp")
+        sparsity = hoyer(f)
+        reg = (1 - alpha * (sparsity.cumsum(dim=0) / self.counts)) / self.config.d_features
         
+        # Compute the reconstruction, ordering and importance kernels
         kernel = self.kernel()
-        orecons = einsum(f, f, (self.down.T @ kernel @ self.down) * inner, "... f1, ... f2, f1 f2 -> ...")
-        loss = (orecons - 2 * o.pow(2).sum(-1) + 1.0).mean()
+        order = einsum(self.triu, reg, self.triu, "f1 reg, reg, f2 reg -> f1 f2")
         
+        # Compute the self and cross terms of the loss and combine them
+        recons = einsum(f, f, (self.down.T @ kernel @ self.down) * order, "... f1, ... f2, f1 f2 -> ...")
+        cross = einsum(f, f, self.down, self.down, self.triu, reg, "... f1, ... f2, h f1, h f2, f1 reg, reg -> ...")
+        loss = masked_mean(recons - 2 * cross + 1.0, mask)
+        
+        # Compute the reconstruction error without the regularisation
         with torch.no_grad():
-            h = einsum(self.down, f, "hid feat, ... feat -> ... hid")
+            h = nn.functional.linear(f, self.down)
             recons = einsum(h, h, kernel, "... h1, ... h2, h1 h2 -> ...")
-            mse = (recons - 2 * h.pow(2).sum(-1) + 1.0).mean()
+            mse = masked_mean(recons - 2 * h.square().sum(-1) + 1.0, mask)
         
-        return loss, f, dict(mse=mse, reg=reg)
+        return loss, f, dict(mse=mse, reg=sparsity.mean())
     
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, momentum=0.95, nesterov=False)

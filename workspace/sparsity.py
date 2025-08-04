@@ -4,10 +4,13 @@
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset, load_dataset
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-from utils import Feature
 from autoencoder import Autoencoder
+from utils.functions import inv_hoyer
 
+import plotly.express as px
 import torch
 # %%
 torch.set_grad_enabled(False)
@@ -18,12 +21,23 @@ model = AutoModelForCausalLM.from_pretrained(name, torch_dtype=torch.float16, de
 tokenize = lambda dataset: tokenizer(dataset["text"], truncation=True, padding=True, max_length=256)
 
 dataset = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
-dataset = Dataset.from_list(list(dataset.take(2**12))).with_format("torch")
+dataset = Dataset.from_list(list(dataset.take(2**10))).with_format("torch")
 dataset = dataset.map(tokenize, batched=True)
 # %%
+max_steps = 2**2
+hoyer, l0 = [], []
+
 coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=0.2, tags=['test']).eval().half()
+
+loader = DataLoader(dataset, batch_size=32, shuffle=False)
+acts = []
+
+for batch, _ in zip(loader, range(max_steps)):
+    batch = {k: v.cuda() for k, v in batch.items() if isinstance(v, torch.Tensor)}
+    acts += [coder(**batch)['features'].half()]
+
+acts = torch.cat(acts, dim=0)
+hoyer = inv_hoyer(acts.flatten(0, -2), dim=0)
+l0 = (acts.flatten(0, -2).abs() > 0.05).sum(dim=-1)
 # %%
-vis = Feature(coder, tokenizer, dataset, max_steps=2**5, batch_size=2**5)
-# %%
-vis(list(range(40, 60)), dark=True, k=3)
-# %%
+px.histogram(acts[..., 53].flatten().cpu(), log_y=True)

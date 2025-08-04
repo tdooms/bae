@@ -24,8 +24,8 @@ model = torch.compile(model)
 train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
 train = train.map(tokenize, batched=True)
 # %%
-for a in [0.2]:
-    coder = Autoencoder.from_config(model, "vanilla", layer=18, expansion=16, alpha=a, tags=[])
+for i in [18]:
+    coder = Autoencoder.from_config(model, "ordered", layer=i, expansion=16, alpha=0.2, tags=['test'])
     project = "coder"
     # project = None
 
@@ -33,8 +33,8 @@ for a in [0.2]:
         seed=0,
         output_dir="_checkpoints",
         logging_steps=10,
-        # save_total_limit=5,
-        save_steps=128,
+        save_total_limit=5,
+        save_steps=512,
         per_device_train_batch_size=32,
         do_eval=False,
         report_to="wandb" if project else "none",

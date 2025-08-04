@@ -6,7 +6,7 @@ from einops import einsum
 from quimb.tensor import Tensor
 
 from utils import Muon
-from autoencoder.base import Autoencoder, Config
+from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
 
 class Vanilla(Autoencoder, kind="vanilla"):
     """A tensor-based autoencoder class which mixes its features."""
@@ -35,24 +35,25 @@ class Vanilla(Autoencoder, kind="vanilla"):
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
     
     def features(self, acts):
-        return einsum(self.left, acts, "feat inp, ... inp -> ... feat") * einsum(self.right, acts, "feat inp, ... inp -> ... feat")
+        return nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right)
 
-    def loss(self, acts):
+    @torch.compile(fullgraph=True)
+    def loss(self, acts, mask, alpha):
         f = self.features(acts)
         
         # Compute the regularisation term
-        hoyer = (f.norm(p=1, dim=(0, 1)) / f.norm(p=2, dim=(0, 1)) - 1.0).mean() / ((f.size(0) * f.size(1))**0.5 - 1.0)
-        reg = 1.0 - self.alpha() * hoyer
+        sparsity = hoyer(f)
+        reg = 1.0 - alpha * sparsity
         
         # Compute the self and cross terms of the loss
         recons = einsum(f, f, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
-        cross = f.pow(2).sum(-1)
+        cross = f.square().sum(-1)
 
         # Compute the reconstruction and the loss
-        mse = (recons - 2*cross + 1.0).mean()
-        loss = (recons * reg - 2*cross*reg + 1.0).mean()
-        
-        return loss, f, dict(mse=mse, reg=hoyer)
+        mse = masked_mean(recons - 2 * cross + 1.0, mask)
+        loss = masked_mean(recons * reg - 2 * cross * reg + 1.0, mask)
+
+        return loss, f, dict(mse=mse, reg=sparsity)
 
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, momentum=0.95, nesterov=False)

@@ -9,6 +9,15 @@ from utils import Hooked, Input
 from abc import abstractmethod
 from safetensors.torch import save_file, load_file
 from types import SimpleNamespace
+from itertools import product
+
+def masked_mean(x, mask):
+    return (x * mask).sum() / mask.sum()
+
+def hoyer(x):
+    # TODO: This should be computed over the unmasked elements only.
+    size = x.size(0) * x.size(1)
+    return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1)) - 1.0).mean() / (size**0.5 - 1.0)
 
 class Placeholder:
     """Use as a placeholder for a model when constrained for memory (there's probably a better way to do this)."""
@@ -79,9 +88,6 @@ class Autoencoder(PreTrainedModel):
     def _like(self):
         return dict(device=self.hooked.model.device, dtype=self.hooked.model.dtype)
     
-    def alpha(self):
-        return self.config.alpha * max(min(1.0, (self.steps - 100) / 512.0), 0.0)
-    
     @staticmethod
     def from_config(model, kind, **kwargs):
         # TODO: Make this more flexible
@@ -91,6 +97,7 @@ class Autoencoder(PreTrainedModel):
     def save(self, root="weights"):
         folder = f"{root}/{self.hooked.model.name_or_path.split('/')[-1]}/{self.config.name}"
         os.makedirs(folder, exist_ok=True)
+        print(folder)
         
         save_file(self.state_dict(), f"{folder}/model.safetensors")
         open(f"{folder}/config.json", 'w').write(self.config.to_json_string())
@@ -108,7 +115,7 @@ class Autoencoder(PreTrainedModel):
         return coder.to(device)
 
     @abstractmethod
-    def loss(self, acts, features): pass
+    def loss(self, acts, mask): pass
     
     @abstractmethod
     def features(self, acts): pass
@@ -126,10 +133,11 @@ class Autoencoder(PreTrainedModel):
         with torch.no_grad():
             _, cache = self.hooked(input_ids[..., :256])
             acts = cache['acts'].type(self.dtype)
-            acts = acts * acts.pow(2).sum(-1, keepdim=True).rsqrt()
-        
+            acts = acts * acts.square().sum(-1, keepdim=True).rsqrt()
+
         if self.training:
-            loss, features, metrics = self.loss(acts)
+            alpha = self.config.alpha * max(min(1.0, (self.steps - 100) / 512.0), 0.0)
+            loss, features, metrics = self.loss(acts, attention_mask, alpha)
             if wandb.run is not None: wandb.log(metrics, commit=False)
             return dict(loss=loss, features=features, acts=acts)
         else:

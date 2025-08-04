@@ -2,7 +2,6 @@
 %load_ext autoreload
 %autoreload 2
 
-from oldcoders.monarch import Monarch
 import torch
 import plotly.express as px
 
@@ -17,3 +16,13 @@ y0 = m(x)
 y1 = m.matrix() @ x
 y0, y1
 # %%
+import torch
+from einops import rearrange, einsum
+
+A = torch.randn(5, 5)
+B = torch.randn(5, 5)
+D = torch.diag(torch.randn(5))
+x = torch.randn(5)
+
+print(einsum(x, A, D, x, "i, i j, i j, j ->"))
+einsum(x, A, x, "i, i j, j ->") * einsum(x, D, x, "i, i j, j ->")
