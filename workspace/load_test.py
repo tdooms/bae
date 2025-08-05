@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from autoencoder import Autoencoder, Mixed, Placeholder
 
-model = Placeholder(d_model=1024, name="Qwen/Qwen3-0.6B-Base")
+model = Placeholder("Qwen/Qwen3-0.6B-Base", d_model=1024)
 
 coder = Autoencoder.load(model, "mixed", layer=18, expansion=16)
 coder

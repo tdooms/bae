@@ -9,7 +9,6 @@ from utils import Hooked, Input
 from abc import abstractmethod
 from safetensors.torch import save_file, load_file
 from types import SimpleNamespace
-from itertools import product
 
 def masked_mean(x, mask):
     return (x * mask).sum() / mask.sum()
@@ -17,11 +16,11 @@ def masked_mean(x, mask):
 def hoyer(x):
     # TODO: This should be computed over the unmasked elements only.
     size = x.size(0) * x.size(1)
-    return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1)) - 1.0).mean() / (size**0.5 - 1.0)
+    return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1)) - 1.0) / (size**0.5 - 1.0)
 
 class Placeholder:
     """Use as a placeholder for a model when constrained for memory (there's probably a better way to do this)."""
-    def __init__(self, d_model, name, device="cuda", dtype=torch.float16):
+    def __init__(self, name, d_model, device="cuda", dtype=torch.float16):
         self.config = SimpleNamespace(hidden_size=d_model)
         self.body = [nn.Identity()] * 100
         self.name_or_path = name
@@ -37,8 +36,10 @@ class Config(PretrainedConfig):
         d_model: int | None = None,     # Model dimension at the hook point
         n_ctx: int = 256,               # Max sampled context length
         expansion: int = 8,             # Expansion factor for the autoencoder
+        bottleneck: int | None = None,  # Bottleneck factor for the Mixed autoencoders
         alpha: float = 0.0,             # Regularisation for activation-based/batch-wise Hoyer sparsity
         beta: float = 0.0,              # Regularisation for weight-based/feature-wise Hoyer sparsity
+        warmup: int = 256,              # Warmup steps for the regularisation
         kind: str = "undefined",        # The autoencoder kind (e.g., "vanilla", "ordered", etc.)
         tags: list = [],                # Tags to identify the model
         **kwargs
@@ -52,8 +53,10 @@ class Config(PretrainedConfig):
         self.n_ctx = n_ctx
         
         self.expansion = expansion
+        self.bottleneck = bottleneck
         self.alpha = alpha
         self.beta = beta
+        self.warmup = warmup
         
         self.kind = kind
         self.tags = tags
@@ -62,6 +65,10 @@ class Config(PretrainedConfig):
     @property
     def d_features(self):
         return int(self.d_model * self.expansion)
+    
+    @property
+    def d_bottleneck(self):
+        return int(self.d_model * (self.bottleneck or 2))
     
     @property
     def name(self):
@@ -86,7 +93,7 @@ class Autoencoder(PreTrainedModel):
         self.hooked = Hooked(model, acts=Input(layer))
 
     def _like(self):
-        return dict(device=self.hooked.model.device, dtype=self.hooked.model.dtype)
+        return dict(device=self.device, dtype=self.dtype)
     
     @staticmethod
     def from_config(model, kind, **kwargs):
@@ -127,18 +134,18 @@ class Autoencoder(PreTrainedModel):
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5): pass
     
     def forward(self, input_ids, attention_mask, **kwargs):
-        self.steps += 1
-        
-        # Normalise the inputs using the L2 norm (not RMS norm)
+        # Sample and normalise the inputs using the L2 norm (not RMS norm)
         with torch.no_grad():
             _, cache = self.hooked(input_ids[..., :256])
             acts = cache['acts'].type(self.dtype)
             acts = acts * acts.square().sum(-1, keepdim=True).rsqrt()
 
         if self.training:
-            alpha = self.config.alpha * max(min(1.0, (self.steps - 100) / 512.0), 0.0)
+            self.steps += 0.5 # Gradient accumulation steps are 2, so we increment by 0.5
+            alpha = self.config.alpha * min(1.0, self.steps / self.config.warmup)
+            
             loss, features, metrics = self.loss(acts, attention_mask, alpha)
-            if wandb.run is not None: wandb.log(metrics, commit=False)
+            if wandb.run is not None: wandb.log(metrics | dict(alpha=alpha), commit=False)
             return dict(loss=loss, features=features, acts=acts)
         else:
             features = self.features(acts)

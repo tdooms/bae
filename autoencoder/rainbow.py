@@ -12,17 +12,19 @@ class Rainbow(Autoencoder, kind="rainbow"):
     """A tensor-based autoencoder class which mixes its features."""
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
-        self.triu = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
+        
+        
+        # self.triu = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
         self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1), persistent=False)
 
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
-        self.down = nn.Parameter(torch.empty(config.d_model * 2, config.d_features))
+        self.down = nn.Parameter(torch.empty(config.d_bottleneck, config.d_features))
         
-        torch.nn.init.xavier_uniform_(self.left.data)
-        torch.nn.init.xavier_uniform_(self.right.data)
-        torch.nn.init.xavier_uniform_(self.down.data)
-    
+        torch.nn.init.orthogonal_(self.left.data)
+        torch.nn.init.orthogonal_(self.right.data)
+        torch.nn.init.orthogonal_(self.down.data)
+
     @staticmethod
     def from_config(model, **kwargs):
         return Rainbow(model, Config(kind="rainbow", **kwargs))
@@ -55,6 +57,7 @@ class Rainbow(Autoencoder, kind="rainbow"):
         order = einsum(self.triu, reg, self.triu, "f1 reg, reg, f2 reg -> f1 f2")
         
         # Compute the self and cross terms of the loss and combine them
+        # NOTE: one could cumsum reg, but it's slower than the matmul for some reason
         recons = einsum(f, f, (self.down.T @ kernel @ self.down) * order, "... f1, ... f2, f1 f2 -> ...")
         cross = einsum(f, f, self.down, self.down, self.triu, reg, "... f1, ... f2, h f1, h f2, f1 reg, reg -> ...")
         loss = masked_mean(recons - 2 * cross + 1.0, mask)

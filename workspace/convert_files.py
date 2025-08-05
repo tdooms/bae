@@ -11,7 +11,7 @@ from safetensors.torch import save_file, load_file
 import json
 
 folder = "_checkpoints222"
-model = Placeholder(d_model=1024, name="Qwen/Qwen3-0.6B-Base")
+model = Placeholder("Qwen/Qwen3-0.6B-Base", d_model=1024)
 
 for filename in tqdm(os.listdir(folder)):
     path = os.path.join(folder, filename)

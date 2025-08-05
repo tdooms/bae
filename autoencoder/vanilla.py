@@ -16,9 +16,9 @@ class Vanilla(Autoencoder, kind="vanilla"):
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
         
-        torch.nn.init.xavier_uniform_(self.left.data)
-        torch.nn.init.xavier_uniform_(self.right.data)
-    
+        torch.nn.init.orthogonal_(self.left.data)
+        torch.nn.init.orthogonal_(self.right.data)
+
     @staticmethod
     def from_config(model, **kwargs):
         return Vanilla(model, Config(kind="vanilla", **kwargs))
@@ -31,7 +31,6 @@ class Vanilla(Autoencoder, kind="vanilla"):
 
         return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:0'], tags=['U']) \
              & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
-             & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
     
     def features(self, acts):
@@ -42,7 +41,7 @@ class Vanilla(Autoencoder, kind="vanilla"):
         f = self.features(acts)
         
         # Compute the regularisation term
-        sparsity = hoyer(f)
+        sparsity = hoyer(f).mean()
         reg = 1.0 - alpha * sparsity
         
         # Compute the self and cross terms of the loss

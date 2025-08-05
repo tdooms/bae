@@ -3,29 +3,72 @@ import wandb
 import pandas as pd
 import plotly.express as px
 
-from itertools import islice
+from itertools import islice, chain
 from tqdm import tqdm
 
 api = wandb.Api()
 runs = api.runs("tdooms/coder")
 # %%
-results = []
-for run in tqdm(islice(runs, 103-10, 103)):
-    history = run.history()
-    _, _, _, _, layer, expansion, alpha, _ = run.name.rsplit('-')
-    
-    mse = history["mse"].tail(20).mean()
-    reg = history["reg"].tail(20).mean()
-    
-    results.append(dict(expansion=int(expansion[1:]), alpha=int(alpha[1:])/100, mse=mse, reg=reg))
 
+combined_sweep = list(islice(runs, 130-11, 130))
+mixed_sweep = list(islice(runs, 165-11, 165))
+vanilla_sweep = list(islice(runs, 176-11, 176))
+
+results = []
+for run in tqdm(chain(mixed_sweep, combined_sweep, vanilla_sweep)):
+    history = run.history()
+    _, _, _, kind, layer, expansion, alpha, _ = run.name.rsplit('-')
+    
+    mse = history["mse"].min()
+    reg = history["reg"].min()
+    
+    if kind == "rainbow":
+        kind = "combined"
+    
+    results.append(dict(kind=kind, alpha=int(alpha[1:])/100, mse=mse, reg=reg))
 
 df = pd.DataFrame(results)
-df['expansion'] = df['expansion'].astype(int)
 df['alpha'] = df['alpha'].astype(float)
-df = df.sort_values(['expansion', 'alpha'], ascending=[False, False])
+df = df.sort_values(['kind', 'alpha'], ascending=[False, False])
 print(df)
 # %%
-fig = px.line(df, x="mse", y="reg", color="expansion", template="plotly_white")
+colors = dict(combined="#784486", mixed="#5C77C1", ordered="#d28e8e", vanilla="#c2eabd")
+fig = px.line(df, x="mse", y="reg", color="kind", template="plotly_white", markers=True, width=600, height=400, log_y=True, color_discrete_map=colors)
+fig.update_xaxes(title="<b>Mean Squared Error</b>")
+fig.update_traces(marker=dict(size=8))
+fig.update_yaxes(title="<b>Hoyer Sparsity</b>")
+fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10))
+
+fig.add_annotation(
+    text="Vanilla",
+    xref="x", 
+    yref="y",
+    x=0.285, 
+    y=-0.23,
+    showarrow=False,
+    font=dict(size=16),
+)
+
+fig.add_annotation(
+    text="Mixed",
+    xref="x", 
+    yref="y",
+    x=0.236, 
+    y=-0.22,
+    showarrow=False,
+    font=dict(size=16),
+)
+
+fig.add_annotation(
+    text="Combined",
+    xref="x", 
+    yref="y",
+    x=0.318, 
+    y=-0.19,
+    showarrow=False,
+    font=dict(size=16),
+)
+
+fig.update_layout(font=dict(family="Fira Sans", size=13, weight=500, color="#282828"))
 fig
 # %%

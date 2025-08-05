@@ -26,3 +26,9 @@ x = torch.randn(5)
 
 print(einsum(x, A, D, x, "i, i j, i j, j ->"))
 einsum(x, A, x, "i, i j, j ->") * einsum(x, D, x, "i, i j, j ->")
+# %%
+from autoencoder.base import hoyer
+import torch
+
+hoyer(torch.eye(5)[None, :, :])
+# %%

@@ -28,7 +28,7 @@ max_steps = 2**2
 hoyer, l0 = [], []
     
 for i in tqdm(range(11)):
-    coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=i/10).eval().half()
+    coder = Autoencoder.load(model, "rainbow", layer=18, expansion=16, alpha=i/10).eval().half()
     
     loader = DataLoader(dataset, batch_size=32, shuffle=False)
     acts = []

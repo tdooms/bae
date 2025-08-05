@@ -27,8 +27,7 @@ dataset = dataset.map(tokenize, batched=True)
 max_steps = 2**2
 hoyer, l0 = [], []
 
-coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=0.2, tags=['test']).eval().half()
-
+coder = Autoencoder.load(model, "rainbow", layer=18, expansion=16, alpha=0.2, tags=['test']).eval().half()
 loader = DataLoader(dataset, batch_size=32, shuffle=False)
 acts = []
 
@@ -40,4 +39,12 @@ acts = torch.cat(acts, dim=0)
 hoyer = inv_hoyer(acts.flatten(0, -2), dim=0)
 l0 = (acts.flatten(0, -2).abs() > 0.05).sum(dim=-1)
 # %%
-px.histogram(acts[..., 53].flatten().cpu(), log_y=True)
+fig = px.scatter(y=hoyer.cpu(), x=list(range(len(hoyer))), opacity=0.3, marginal_y="histogram", template="plotly_white")
+fig.update_yaxes(title="<b>Hoyer sparsity</b>", range=(0, 1.005)).update_xaxes(title="<b>Feature index</b>", range=(0, 1024*16), row=1, col=1, showgrid=False)
+fig.update_layout(yaxis2=dict(title=""), xaxis2=dict(title=""))
+fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), width=500, height=300)
+
+fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False, row=1, col=2).update_yaxes(showticklabels=False, showgrid=False, zeroline=False, row=1, col=2)
+# %%
+
+px.histogram(acts[..., 96].flatten().cpu(), nbins=100, template="plotly_white")

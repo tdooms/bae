@@ -12,15 +12,15 @@ class Mixed(Autoencoder, kind="mixed"):
     """A tensor-based autoencoder class which mixes its features."""
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
-
+        
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
-        self.down = nn.Parameter(torch.empty(config.d_model * 2, config.d_features))
+        self.down = nn.Parameter(torch.empty(config.d_bottleneck, config.d_features))
         
-        torch.nn.init.xavier_uniform_(self.left.data)
-        torch.nn.init.xavier_uniform_(self.right.data)
-        torch.nn.init.xavier_uniform_(self.down.data)
-    
+        torch.nn.init.orthogonal_(self.left.data)
+        torch.nn.init.orthogonal_(self.right.data)
+        torch.nn.init.orthogonal_(self.down.data)
+
     @staticmethod
     def from_config(model, **kwargs):
         return Mixed(model, Config(kind="mixed", **kwargs))
@@ -31,8 +31,8 @@ class Mixed(Autoencoder, kind="mixed"):
     def network(self, mod='inp'):
         u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
         
-        return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:0'], tags=['U']) \
-             & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
+        return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'in:0'], tags=['U']) \
+             & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'in:1'], tags=['U']) \
              & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
     
@@ -46,7 +46,7 @@ class Mixed(Autoencoder, kind="mixed"):
         h = nn.functional.linear(f, self.down)
         
         # Compute the regularisation term
-        sparsity = hoyer(f)
+        sparsity = hoyer(f).mean()
         reg = 1.0 - alpha * sparsity
         
         # Compute the self and cross terms of the loss

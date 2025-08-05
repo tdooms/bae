@@ -12,14 +12,15 @@ class Ordered(Autoencoder, kind="ordered"):
     """A tensor-based autoencoder class which mixes its features."""
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
+        
         self.triu = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
         self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1), persistent=False)
 
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
         
-        torch.nn.init.xavier_uniform_(self.left.data)
-        torch.nn.init.xavier_uniform_(self.right.data)
+        torch.nn.init.orthogonal_(self.left.data)
+        torch.nn.init.orthogonal_(self.right.data)
     
     @staticmethod
     def from_config(model, **kwargs):
@@ -29,7 +30,7 @@ class Ordered(Autoencoder, kind="ordered"):
         return (self.left @ self.left.T) * (self.right @ self.right.T)
     
     def features(self, acts):
-        return nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right)
+        return einsum(self.left, acts, "feat inp, ... inp -> ... feat") * einsum(self.right, acts, "feat inp, ... inp -> ... feat")
     
     def network(self, mod='inp'):
         u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
@@ -38,7 +39,6 @@ class Ordered(Autoencoder, kind="ordered"):
              & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
     
-    @torch.compile(fullgraph=True)
     def loss(self, acts, mask, alpha):
         f = self.features(acts)
         
@@ -51,6 +51,7 @@ class Ordered(Autoencoder, kind="ordered"):
         order = einsum(self.triu, reg, self.triu, "f1 reg, reg, f2 reg -> f1 f2")
         
         # Compute the self and cross terms of the loss and combine them
+        # NOTE: one could cumsum reg, but it's slower than the matmul for some reason
         recons = einsum(f, f, kernel * order, "... f1, ... f2, f1 f2 -> ...")
         cross = einsum(f, f, self.triu, reg, "... f, ... f, f reg, reg -> ...")
         loss = masked_mean(recons - 2 * cross + 1.0, mask)
