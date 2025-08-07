@@ -13,7 +13,7 @@ class Rainbow(Autoencoder, kind="rainbow"):
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
         
-        
+        # TODO: find a way clean to not instantiate this when only evaluating the model
         # self.triu = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
         self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1), persistent=False)
 

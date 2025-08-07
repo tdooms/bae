@@ -13,9 +13,12 @@ import os
 from torch.backends import opt_einsum
 opt_einsum.strategy = "auto-hq"
 # %%
-name = "Qwen/Qwen3-0.6B-Base"
+name = "gpt2"
 
 tokenizer = AutoTokenizer.from_pretrained(name)
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
 tokenize = lambda dataset: tokenizer(dataset["text"], truncation=True, padding=True, max_length=256)
 
 model = AutoModelForCausalLM.from_pretrained(name, torch_dtype="auto", device_map="auto")
@@ -24,10 +27,10 @@ model = torch.compile(model)
 train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
 train = train.map(tokenize, batched=True)
 # %%
-for i in range(6, 11):
-    coder = Autoencoder.from_config(model, "ordered", layer=18, expansion=16, alpha=i/10, tags=[])
+# for i in range(11):
+for i in [1]:
+    coder = Autoencoder.from_config(model, "mixed", layer=8, expansion=16, alpha=i/10, tags=[])
     project = "coder"
-    # project = None
 
     args = TrainingArguments(
         seed=0,
@@ -61,7 +64,7 @@ for i in range(6, 11):
     trainer.train()
     coder.save()
     
-    wandb.run.tags = ['sparsity-sweep']
+    wandb.run.tags = []
 
     wandb.finish()
 # %%

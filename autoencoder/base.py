@@ -14,7 +14,7 @@ def masked_mean(x, mask):
     return (x * mask).sum() / mask.sum()
 
 def hoyer(x):
-    # TODO: This should be computed over the unmasked elements only.
+    # TODO: This should (maybe) be computed over the unmasked elements only.
     size = x.size(0) * x.size(1)
     return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1)) - 1.0) / (size**0.5 - 1.0)
 
@@ -90,6 +90,7 @@ class Autoencoder(PreTrainedModel):
         
         # TODO: Make this more flexible
         layer = model.body[config.layer] if hasattr(model, 'body') else model.model.layers[config.layer]
+        # layer = model._orig_mod.transformer.h[config.layer]
         self.hooked = Hooked(model, acts=Input(layer))
 
     def _like(self):

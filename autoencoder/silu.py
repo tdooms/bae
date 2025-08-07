@@ -8,13 +8,10 @@ from quimb.tensor import Tensor
 from utils import Muon
 from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
 
-
-class Mixed(Autoencoder, kind="mixed"):
+class Silu(Autoencoder, kind="silu"):
     """A tensor-based autoencoder class which mixes its features."""
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
-        self.supports_gradient_checkpointing = True
-        self.gradient_checkpointing = True
         
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
@@ -26,8 +23,11 @@ class Mixed(Autoencoder, kind="mixed"):
 
     @staticmethod
     def from_config(model, **kwargs):
-        return Mixed(model, Config(kind="mixed", **kwargs))
+        return Silu(model, Config(kind="silu", **kwargs))
     
+    def kernel(self):
+        return self.down @ ((self.left @ self.left.T) * (self.right @ self.right.T)) @ self.down.T
+
     def network(self, mod='inp'):
         u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
         
@@ -36,33 +36,31 @@ class Mixed(Autoencoder, kind="mixed"):
              & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
     
-    def kernel(self):
-        return self.down @ ((self.left @ self.left.T) * (self.right @ self.right.T)) @ self.down.T
-    
     def features(self, acts):
-        return nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right)
-    
+        return nn.functional.linear(acts, self.left) * nn.functional.gelu(nn.functional.linear(acts, self.right))
+
     @torch.compile(fullgraph=True)
     def loss(self, acts, mask, alpha):
         # Compute the features and hidden representation
         f = self.features(acts)
         h = nn.functional.linear(f, self.down)
+        g = nn.functional.linear(nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right), self.down)
         
         # Compute the regularisation term
         sparsity = hoyer(f).mean()
-        reg = 1.0 - alpha * sparsity 
+        reg = 1.0 - alpha * sparsity
         
         # Compute the self and cross terms of the loss
         recons = einsum(h, h, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
-        cross = h.square().sum(-1)
+        cross = (h * g).sum(-1)
         
         # Compute the reconstruction and the loss
         mse = masked_mean(recons - 2 * cross + 1.0, mask)
         loss = masked_mean(recons * reg - 2 * cross * reg + 1.0, mask)
 
         return loss, f, dict(mse=mse, reg=sparsity)
-    
+
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
-        optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, momentum=0.95, nesterov=False)
+        optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, momentum=0.5, nesterov=False)
         scheduler = LambdaLR(optimizer, lambda step: min(1.0, (1.0 / (cooldown - 1.0)) * ((step / max_steps) - 1.0)))
         return optimizer, scheduler
