@@ -39,12 +39,10 @@ df['alpha'] = df['alpha'].astype(float)
 df = df.sort_values(['kind', 'alpha'], ascending=[False, False])
 print(df)
 # %%
-COLORS = dict(combined="#087F8C", mixed="#C2514E", ordered="#FF9505", vanilla="#99C24E")
-
 fig = px.line(df, x="mse", y="reg", color="kind", template="plotly_white", markers=True, width=600, height=400, log_y=True, color_discrete_map=COLORS)
 fig.update_xaxes(title="<b>Mean Squared Error</b>")
 fig.update_traces(marker=dict(size=8))
-fig.update_yaxes(title="<b>Hoyer Sparsity</b>")
+fig.update_yaxes(title="<b>Hoyer</b>")
 fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10))
 
 fig.add_annotation(
