@@ -35,12 +35,22 @@ class Rainbow(Autoencoder, kind="rainbow"):
     def features(self, acts):
         return nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right)
     
+    # def network(self, mod='inp'):
+    #     u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
+        
+    #     return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:0'], tags=['U']) \
+    #          & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
+    #          & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
+    #          & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
+    
     def network(self, mod='inp'):
         u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
-        
+        triu = torch.triu(torch.ones(self.config.d_features, self.config.d_features, **self._like())) / self.config.d_features**0.5
+
         return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:0'], tags=['U']) \
              & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
              & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
+             & Tensor(triu, inds=[f'f:{mod}', f'm'], tags=['T']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
     
     @torch.compile(fullgraph=True)

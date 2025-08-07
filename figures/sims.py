@@ -9,51 +9,48 @@ from tqdm import tqdm
 from itertools import product
 from tqdm import tqdm
 from autoencoder import Autoencoder, Placeholder
+from figures.constants import FONT
 
 # %%
 torch.set_grad_enabled(False)
 model = Placeholder("Qwen/Qwen3-0.6B-Base", d_model=1024)
 
-# def polar(m):   # express polar decomposition in terms of singular-value decomposition
-#     U, S, Vh = torch.linalg.svd(m.float())
-#     u = U @ Vh
-#     p = Vh.T.conj() @ S.diag().to(dtype=m.dtype) @ Vh
-#     return  u, p
-
-def norm(a, b):
+def norm(a, b, kind):
     """Compute the norm of the kernel matrix"""
-    matrix = (a.network('a') | b.network('b')).contract(all, output_inds=['h:a', 'h:b']).data
+    tn = a.network('a') | b.network('b')
+    matrix = tn.contract(all, output_inds=['h:a', 'h:b'], optimize="auto-hq").data if kind in ["mixed", "rainbow"] else tn.contract(all, output_inds=['f:a', 'f:b']).data
     return matrix.pow(2).mean().item()
 # %%
+sims = []
 # Create figure x, takes about ~15 minutes on my machine
-coders = [Autoencoder.load(model, "rainbow", layer=i, expansion=16, alpha=0.1).eval().half() for i in tqdm(range(10))]
+for kind in ["vanilla", "mixed", "ordered", "rainbow"]:
+    coders = [Autoencoder.load(model, kind, layer=18, expansion=16, alpha=i/10).eval().half() for i in tqdm(range(11))]
 
-norms = [norm(a, b) for a, b in tqdm(list(product(coders, coders)))]
-norms = torch.tensor(norms).reshape(len(coders), len(coders))
+    norms = [norm(a, b, kind) for a, b in tqdm(list(product(coders, coders)))]
+    norms = torch.tensor(norms).reshape(len(coders), len(coders))
 
-sims = (2 * norms.sqrt()) / (norms.diag().sqrt()[:, None] + norms.diag().sqrt()[None, :])
+    sims += [(2 * norms.sqrt()) / (norms.diag().sqrt()[:, None] + norms.diag().sqrt()[None, :])]
+sims = torch.stack(sims, dim=0)
 # %%
-names = ["<b>Rainbow</b>"]
-stacked = torch.stack([sims], dim=0)
-fig = px.imshow(stacked.cpu(), color_continuous_scale='RdBu', color_continuous_midpoint=0.5, facet_col=0, width=800, height=400)
+names = ["<b>Vanilla</b>", "<b>Mixed</b>", "<b>Ordered</b>", "<b>Combined</b>"]
+fig = px.imshow(sims.cpu(), color_continuous_scale='RdBu', color_continuous_midpoint=0.5, facet_col=0, width=1170, height=300)
 fig.update_xaxes(showticklabels=False).update_yaxes(showticklabels=False)
 fig.for_each_annotation(lambda a: a.update(text=names[int(a.text.split("=")[-1])], font_size=16))
-fig.update_layout(margin=dict(l=10, r=10, t=30, b=10))
+fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=22, b=10), font=FONT)
 fig.show()
 # %%
+from scipy.optimize import linear_sum_assignment
+d = coders[0].config.d_features
 
-# results = [similarities(a, b) for a, b in tqdm(list(product(coders, coders)))]
-# norms = torch.tensor([r['norm'] for r in results]).reshape(len(coders), len(coders))
-# partials = torch.tensor([r['partial'] for r in results]).reshape(len(coders), len(coders))
-# sparsities = torch.tensor([r['sparsity'] for r in results]).reshape(len(coders), len(coders))
-# sims = (2 * norms.sqrt()) / (norms.diag().sqrt()[:, None] + norms.diag().sqrt()[None, :])
+a = Autoencoder.load(model, "rainbow", layer=18, expansion=16, alpha=0.1).eval().half()
+b = Autoencoder.load(model, "rainbow", layer=18, expansion=16, alpha=0.2).eval().half()
 
-# names = ["Frobenius", "Permutation", "Sparsity"]
-# stacked = torch.stack([sims, partials, sparsities], dim=0)
-# fig = px.imshow(stacked.cpu(), color_continuous_scale='RdBu', color_continuous_midpoint=0.5, facet_col=0)
-# fig.update_xaxes(showticklabels=False).update_yaxes(showticklabels=False)
-# fig.for_each_annotation(lambda a: a.update(text=names[int(a.text.split("=")[-1])], font_size=16))
-# fig.show()
+tn = (a.network('a') | b.network('b'))
+matrix = tn.contract(all, output_inds=['h:a', 'h:b']).data / 20.0
+norm = matrix.pow(2).sum()
+
+row_ind, col_ind = linear_sum_assignment(matrix.abs().cpu().numpy(), maximize=True)
+partial = matrix[row_ind, col_ind].pow(2).sum() / norm
+
+print(f"Norm: {norm:.4f}, Partial: {partial:.4f}")
 # %%
-
-# coders = [Autoencoder.load(model, "rainbow", layer=18, expansion=16, alpha=i/10).half() for i in tqdm(range(10))]

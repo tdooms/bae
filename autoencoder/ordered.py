@@ -13,7 +13,7 @@ class Ordered(Autoencoder, kind="ordered"):
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
         
-        self.triu = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
+        # self.triu = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
         self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1), persistent=False)
 
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))

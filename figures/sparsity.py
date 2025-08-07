@@ -28,7 +28,9 @@ dataset = dataset.map(tokenize, batched=True)
 max_steps = 2**2
 hoyer, l0 = [], []
 
-coder = Autoencoder.load(model, "ordered", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
+# coder = Autoencoder.load(model, "ordered", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
+coder = Autoencoder.load(model, "vanilla", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
+
 loader = DataLoader(dataset, batch_size=32, shuffle=False)
 acts = []
 

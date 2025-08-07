@@ -40,10 +40,9 @@ df = df.sort_values(['kind', 'alpha'], ascending=[False, False])
 print(df)
 # %%
 fig = px.line(df, x="mse", y="reg", color="kind", template="plotly_white", markers=True, width=600, height=400, log_y=True, color_discrete_map=COLORS)
-fig.update_xaxes(title="<b>Mean Squared Error</b>")
 fig.update_traces(marker=dict(size=8))
-fig.update_yaxes(title="<b>Hoyer</b>")
-fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10))
+fig.update_xaxes(title="<b>Mean Squared Error</b>").update_yaxes(title="<b>Hoyer</b>")
+fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10), font=FONT)
 
 fig.add_annotation(
     text="Vanilla",
@@ -85,6 +84,5 @@ fig.add_annotation(
     font=dict(size=16),
 )
 
-fig.update_layout(font=FONT)
 fig
 # %%
