@@ -79,9 +79,10 @@ df = pd.concat([ordered, vanilla, reordered], ignore_index=True)
 # %%
 fig = px.line(df, x='x', y='recons', color='kind', template="plotly_white", width=600, height=400, color_discrete_map=COLORS)
 fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), font=FONT)
-fig.update_xaxes(title_text="<b>Feature index</b>")
+fig.update_xaxes(title_text="<b>Latent index</b>")
 fig.update_yaxes(title_text="<b>Reconstruction error</b>", range=(0, 0.805))
 fig.update_layout(showlegend=True, legend=dict(title="", orientation="h", x=0.5, xanchor="center", y=1.02, yanchor="bottom"))
 fig.update_traces(line=dict(width=3))
 # %%
-fig.write_image("C:/Users/thoma/Downloads/cumulative-recons.svg")
+fig.write_image("C:/Users/thoma/Downloads/ordered-recons.svg")
+# %%
