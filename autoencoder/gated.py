@@ -8,7 +8,7 @@ from quimb.tensor import Tensor
 from utils import Muon
 from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
 
-class Silu(Autoencoder, kind="silu"):
+class Gated(Autoencoder, kind="gated"):
     """A tensor-based autoencoder class which mixes its features."""
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
@@ -23,7 +23,7 @@ class Silu(Autoencoder, kind="silu"):
 
     @staticmethod
     def from_config(model, **kwargs):
-        return Silu(model, Config(kind="silu", **kwargs))
+        return Gated(model, Config(kind="gated", **kwargs))
     
     def kernel(self):
         return self.down @ ((self.left @ self.left.T) * (self.right @ self.right.T)) @ self.down.T

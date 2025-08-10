@@ -13,10 +13,15 @@ from types import SimpleNamespace
 def masked_mean(x, mask):
     return (x * mask).sum() / mask.sum()
 
-def hoyer(x):
+# def hoyer(x):
+#     # TODO: This should (maybe) be computed over the unmasked elements only.
+#     size = x.size(0) * x.size(1)
+#     return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1) ) - 1.0) / (size**0.5 - 1.0)
+
+def hoyer(x, eps=1e-4):
     # TODO: This should (maybe) be computed over the unmasked elements only.
     size = x.size(0) * x.size(1)
-    return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1)) - 1.0) / (size**0.5 - 1.0)
+    return (x.norm(p=1, dim=(0, 1)) / (x.norm(p=2, dim=(0, 1)) + eps) - 1.0) / (size**0.5 - 1.0)
 
 class Placeholder:
     """Use as a placeholder for a model when constrained for memory (there's probably a better way to do this)."""

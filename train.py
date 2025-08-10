@@ -24,8 +24,8 @@ model = torch.compile(model)
 train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
 train = train.map(tokenize, batched=True)
 # %%
-for i in range(6, 11):
-    coder = Autoencoder.from_config(model, "ordered", layer=18, expansion=16, alpha=i/10, tags=[])
+for i in range(24):
+    coder = Autoencoder.from_config(model, "ordinary", layer=i, expansion=16, alpha=0.1, tags=[])
     project = "coder"
     # project = None
 
@@ -61,8 +61,7 @@ for i in range(6, 11):
     trainer.train()
     coder.save()
     
-    wandb.run.tags = ['sparsity-sweep']
-
+    wandb.run.tags = []
     wandb.finish()
 # %%
 import gc

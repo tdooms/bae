@@ -22,7 +22,7 @@ def norm(a, b, kind):
     return matrix.pow(2).mean().item()
 # %%
 sims = []
-# Create figure x, takes about ~15 minutes on my machine
+# Create figure x, takes about ~4 minutes on my machine
 for kind in ["vanilla", "mixed", "ordered", "rainbow"]:
     coders = [Autoencoder.load(model, kind, layer=18, expansion=16, alpha=i/10).eval().half() for i in tqdm(range(11))]
 

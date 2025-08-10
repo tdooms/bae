@@ -6,8 +6,8 @@ import plotly.express as px
 import torch
 
 class Manifold:
-    def __init__(self, dataset, hooked, tokenizer, densities, **kwargs):
-        self.eigvals, self.eigvecs = torch.linalg.eigh(densities.float())
+    def __init__(self, dataset, hooked, tokenizer, forms, **kwargs):
+        self.eigvals, self.eigvecs = torch.linalg.eigh(forms.float())
         self.dataset = dataset
         self.hooked = hooked
         self.tokenizer = tokenizer
@@ -65,7 +65,7 @@ class Manifold:
             color_continuous_midpoint=0.0,
             color_continuous_scale="RdBu",
             hover_name=tokens,
-            height=600, 
+            height=800, 
             width=800
         )
 

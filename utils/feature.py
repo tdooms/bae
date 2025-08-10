@@ -50,7 +50,7 @@ class Feature:
     def color_line(line, colors, start, end):
         return "".join([Feature.color_str(line[i], colors[i]) for i in range(start, end)]).replace('Ġ', '')
 
-    def color_inputs(self, batch, feature, view=range(-30, 20), dark=True, largest=True):
+    def color_inputs(self, batch, feature, view=range(-20, 10), dark=True, largest=True):
         features = self.model(**batch)['features']
         values = features[..., feature]
         tokens = [self.tokenizer.convert_ids_to_tokens(ids) for ids in batch['input_ids']]

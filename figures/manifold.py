@@ -27,7 +27,7 @@ dataset = Dataset.from_list(list(dataset.take(2**11))).with_format("torch")
 dataset = dataset.map(tokenize, batched=True)
 # %%
 # coder = Autoencoder.load(model, layer=18, expansion=16, root='weights/sweep', tags=['10']).half()
-coder = Autoencoder.load(model, "mixed", layer=18, expansion=24, alpha=0.2, tags=['test']).half()
+coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=1.0).half()
 vis = Feature(coder, tokenizer, dataset, max_steps=2**4, batch_size=2**5)
 # %%
 d = coder.down / coder.down.norm(dim=0, keepdim=True)
@@ -39,34 +39,28 @@ g = d.T @ d
 
 gpr = generalized_effective_dimension(g)
 px.scatter(y=gpr.cpu(), x=list(range(gpr.size(-1))), template='plotly_white', title="Number of active elements in the overlap matrix").show()
-print(gpr.topk(50).indices.tolist())
+print(gpr.topk(200).indices.tolist()[150:])
 # %%
-# These are for the coder with '10' tag
-# idx = 602
-# idx = 11023
-# idx = 7695
-
-# These are for the coder with '2' tag
-# idx = 10313  # abbreviation manifold
-# idx = 3338 # ( manifold
-# idx = 7695 # triangle for paper
-# idx = 2062 # colon prediction for paper
-# idx = 15620 # numbers!
-idx = 12537
+# idx = 9788 # this/these/those - paper
+idx = 5881 # although/while
+# idx = 15612 # none/not/any/little - paper
+# idx = 13346 # make/made
+# idx = 3732 # predict numerals, numeric literals
+# idx = 3294 # numbers in years
+# idx = 3569 # first number in year (circle) - paper
 
 fig = px.histogram(g[idx].cpu(), template='plotly_white', log_y=True, width=500, height=300, range_x=[-1.1, 1.1])
 fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False).show()
 
-vals, inds = g[idx].abs().topk(k=5)
+vals, inds = g[idx].abs().topk(k=10)
 vis(inds[:5].tolist(), k=3)
 # %%
-density = einsum(vals, coder.left[inds], coder.right[inds], "out, out in1, out in2 -> in1 in2")
-# density = einsum(coder.down[2], coder.left, coder.right, "mid, mid in1, mid in2 -> in1 in2")
+form = einsum(vals, coder.left[inds], coder.right[inds], "out, out in1, out in2 -> in1 in2")
 # density = einsum(torch.randn(5), torch.randn(5, 1024), torch.randn(5, 1024), "out, out in1, out in2 -> in1 in2").to("cuda")
-density = 0.5 * (density + density.T)
+form = 0.5 * (form + form.T)
 
-manifold = Manifold(dataset, coder.hooked, tokenizer, density, max_steps=2**3)
+manifold = Manifold(dataset, coder.hooked, tokenizer, form, max_steps=2**6)
 manifold.spectrum().show()
 
-manifold(k=30_000)
+manifold(k=75_000)
 # %%
