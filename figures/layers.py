@@ -28,7 +28,9 @@ for run in tqdm(chain(combined_sweep, ordered_sweep, mixed_sweep, vanilla_sweep,
     
     if kind == "rainbow":
         kind = "combined"
-    
+    if kind == "ordinary":
+        kind = "baseline"
+
     results.append(dict(kind=kind, alpha=int(alpha[1:])/100, mse=mse, reg=reg, layer=int(layer[1:])))
 
 df = pd.DataFrame(results)
@@ -36,13 +38,11 @@ df['alpha'] = df['alpha'].astype(float)
 df = df.sort_values(['kind', 'alpha'], ascending=[False, False])
 print(df)
 # %%
-fig = px.bar(df, y='mse', x="layer", color="kind", template="plotly_white", barmode='group', color_discrete_map=COLORS, category_orders={"kind": ["vanilla", "mixed", "ordered", "combined"]})
+order = {"kind": ["vanilla", "mixed", "ordered", "combined", "baseline"]}
+fig = px.bar(df, y='mse', x="layer", color="kind", template="plotly_white", barmode='group', color_discrete_map=COLORS, category_orders=order, width=1000, height=400)
 fig.update_xaxes(title="<b>Layer</b>", tickvals=df['layer'].unique())
-fig.update_yaxes(title="<b>Mean Squared Error</b>")
-fig.update_layout(font=FONT)
+fig.update_yaxes(title="<b>Reconstruction error</b>")
+fig.update_layout(font=FONT, margin=dict(l=10, r=10, t=10, b=10))
+fig.update_layout(showlegend=True, legend=dict(title="", orientation="h", x=0.5, xanchor="center", y=1.02, yanchor="bottom"))
 # %%
-fig = px.bar(df, y='reg', x="layer", color="kind", template="plotly_white", barmode='group', color_discrete_map=COLORS)
-fig.update_xaxes(title="<b>Layer</b>", tickvals=df['layer'].unique())
-fig.update_yaxes(title="<b>Hoyer Sparsity</b>")
-fig.update_layout(font=FONT)
-# %%
+fig.write_image("C:/Users/thoma/Downloads/layer-recons.svg")

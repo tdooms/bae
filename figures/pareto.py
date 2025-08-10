@@ -41,8 +41,8 @@ print(df)
 # %%
 fig = px.line(df, x="mse", y="reg", color="kind", template="plotly_white", markers=True, width=600, height=400, log_y=True, color_discrete_map=COLORS)
 fig.update_traces(marker=dict(size=8))
-fig.update_xaxes(title="<b>Mean Squared Error</b>").update_yaxes(title="<b>Hoyer</b>")
-fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10), font=FONT)
+fig.update_xaxes(title="<b>Reconstruction error</b>").update_yaxes(title="<b>Sparsity</b>")
+fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), font=FONT)
 
 fig.add_annotation(
     text="Vanilla",
@@ -78,7 +78,7 @@ fig.add_annotation(
     text="Ordered",
     xref="x", 
     yref="y",
-    x=0.325, 
+    x=0.324, 
     y=-0.20,
     showarrow=False,
     font=dict(size=16),
@@ -86,3 +86,4 @@ fig.add_annotation(
 
 fig
 # %%
+fig.write_image("C:/Users/thoma/Downloads/pareto.svg")

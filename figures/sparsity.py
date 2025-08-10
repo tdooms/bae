@@ -30,8 +30,8 @@ dataset = dataset.map(tokenize, batched=True)
 max_steps = 2**2
 hoyer, l0 = [], []
 
-# coder = Autoencoder.load(model, "ordered", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
-# coder = Autoencoder.load(model, "vanilla", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
+# coder = Autoencoder.load(model, "ordered", layer=18, expansion=16, alpha=1.0, tags=[], root="//wsl.localhost/Ubuntu/home/thomas/bae/weights").eval().half()
+coder = Autoencoder.load(model, "vanilla", layer=18, expansion=16, alpha=1.0, tags=[], root="//wsl.localhost/Ubuntu/home/thomas/bae/weights").eval().half()
 
 # coder = Autoencoder.load(model, "ordinary", layer=18, expansion=16, alpha=0.1, tags=[]).eval().half()
 # coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=1.5, tags=[]).eval().half()
@@ -56,9 +56,5 @@ fig.update_layout(font=FONT)
 
 fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False, row=1, col=2).update_yaxes(showticklabels=False, showgrid=False, zeroline=False, row=1, col=2)
 # %%
-px.histogram(acts[..., 96].flatten().cpu(), nbins=100, template="plotly_white")
-# %%
-# fig = px.density_heatmap(df, x=df.index, y="hoyer", nbinsx=16, nbinsy=10, color_continuous_scale="Blues")
-# %%
-fig = px.scatter(df, x=df.index, y="l0", opacity=0.3, marginal_y="histogram", template="plotly_white")
-fig
+fig.write_image("C:/Users/thoma/Downloads/sparsity.svg")
+    
