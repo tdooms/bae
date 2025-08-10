@@ -56,6 +56,6 @@ for kind in ["vanilla", "ordered"]:
     fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False, row=1, col=2).update_yaxes(showticklabels=False, showgrid=False, zeroline=False, row=1, col=2)
     fig.show()
 
-    fig.write_image("C:/Users/thoma/Downloads/sparsity.svg")
+    fig.write_image(f"C:/Users/thoma/Downloads/{kind}-sparsity.svg")
 # %%
     
