@@ -10,7 +10,7 @@ from utils import Hooked, Input
 from abc import abstractmethod
 from types import SimpleNamespace
 
-from safetensors.torch import save_file, load_file, load_model, save_model
+from safetensors.torch import load_model, save_model
 from huggingface_hub import hf_hub_download, HfApi
 
 def masked_mean(x, mask):
@@ -19,7 +19,7 @@ def masked_mean(x, mask):
 def hoyer(x):
     # TODO: This should (maybe) be computed over the unmasked elements only.
     size = x.size(0) * x.size(1)
-    return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1) ) - 1.0) / (size**0.5 - 1.0)
+    return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1)) - 1.0) / (size**0.5 - 1.0)
 
 class Placeholder:
     """Use as a placeholder for a model when constrained for memory (there's probably a better way to do this)."""
@@ -77,7 +77,7 @@ class Config(PretrainedConfig):
     
     @property
     def name(self):
-        return '-'.join([self.kind, f"l{self.layer}", f"x{self.expansion}", f"a{int(self.alpha*100)}", f"b{int(self.beta*100)}", *self.tags])
+        return '-'.join([self.kind, f"l{self.layer:02d}", f"x{self.expansion}", f"a{int(self.alpha*100)}", f"b{int(self.beta*100)}", *self.tags])
         
 
 class Autoencoder(PreTrainedModel):
@@ -122,31 +122,24 @@ class Autoencoder(PreTrainedModel):
         return Autoencoder._subclasses[kind].from_config(model, d_model=d_model, base=base, **kwargs)
 
     @staticmethod
-    def from_storage(model, kind, layer, expansion, alpha=0.0, beta=0.0, tags=[], root="weights", device='cuda'):
+    def load(model, kind, layer, expansion, alpha=0.0, beta=0.0, tags=[], hf=False, device="cuda"):
+        """Load an autoencoder from HuggingFace ``hf = True`` or local storage ``hf = False``."""
         base = model.name_or_path.split('/')[-1].lower()
         name = Config(kind=kind, layer=layer, expansion=expansion, alpha=alpha, beta=beta, tags=tags, d_model=0).name
-        folder = f"{root}/{base}/{name}"
-
-        config = Config(**json.load(open(f"{folder}/config.json")))
-        coder = Autoencoder._subclasses[config.kind](model, config)
         
-        load_model(coder, f"{folder}/model.safetensors", device=device)
-        return coder
-    
-    @staticmethod
-    def from_hub(model, kind, layer, expansion, alpha=0.0, beta=0.0, tags=[], root="tdooms", device='cuda'):
-        base = model.name_or_path.split('/')[-1].lower()
-        name = Config(kind=kind, layer=layer, expansion=expansion, alpha=alpha, beta=beta, tags=tags, d_model=0).name
-        repo = f"{root}/{base}-scope"
-        
-        config_path = hf_hub_download(repo_id=repo, filename=f"{name}/config.json")
-        model_path = hf_hub_download(repo_id=repo, filename=f"{name}/model.safetensors")
+        if hf:
+            repo = f"tdooms/{base}-scope"
+            config_path = hf_hub_download(repo_id=repo, filename=f"{name}/config.json")
+            model_path = hf_hub_download(repo_id=repo, filename=f"{name}/model.safetensors")
+        else:
+            config_path = f"weights/{base}/{name}/config.json"
+            model_path = f"weights/{base}/{name}/model.safetensors"
 
         config = Config(**json.load(open(config_path)))
         coder = Autoencoder._subclasses[config.kind](model, config)
-        
+
         load_model(coder, model_path, device=device)
-        return coder
+        return coder.to(device) # I'm a bit confused why this is necessary
 
     @abstractmethod
     def loss(self, acts, mask): pass
@@ -158,7 +151,7 @@ class Autoencoder(PreTrainedModel):
     def network(self, mod='inp'): pass
     
     @abstractmethod
-    def optimizers(self, max_steps, lr=0.01, cooldown=0.5): pass
+    def optimizers(self, max_steps, lr=0.03): pass
     
     def forward(self, input_ids, attention_mask, **kwargs):
         # Sample and normalise the inputs using the L2 norm

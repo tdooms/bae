@@ -18,8 +18,8 @@ repo = f"tdooms/qwen3-0.6b-base-scope"
 
 for i in range(24):
     base = model.name_or_path.split('/')[-1].lower()
-    name = Config(kind="vanilla", layer=i, expansion=16, alpha=0.1, beta=0.0, tags=[], d_model=0).name
-    folder = f"weights/{base}/{name}"
+    name = Config(kind="combined", layer=i, expansion=16, alpha=0.1, beta=0.0, tags=[], d_model=0).name
+    folder = f"weights/{base}/{name.replace('l0', 'l')}"
 
     HfApi().upload_folder(folder_path=folder, path_in_repo=name, repo_id=repo)
 

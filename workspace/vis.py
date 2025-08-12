@@ -21,11 +21,12 @@ dataset = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="t
 dataset = Dataset.from_list(list(dataset.take(2**12))).with_format("torch")
 dataset = dataset.map(tokenize, batched=True)
 # %%
-# coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=1.5, tags=[]).eval().half()
-coder = Autoencoder.load(model, "biased", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
+# coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
+# coder = Autoencoder.load(model, "biased", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
+coder = Autoencoder.load(model, "vanilla", layer=18, expansion=16, alpha=0.1, tags=[]).eval().half()
 # %%
 vis = Feature(coder, tokenizer, dataset, max_steps=2**5, batch_size=2**5)
 # %%
-vis(list(range(20, 40)), dark=True, k=3)
+vis(list(range(20)), dark=True, k=5)
 # %%
 vis(13, k=20)

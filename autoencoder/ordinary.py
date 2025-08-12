@@ -1,7 +1,7 @@
 import torch
 
 from torch import nn
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import LinearLR
 from utils import Muon
 
 from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
@@ -55,7 +55,7 @@ class Ordinary(Autoencoder, kind="ordinary"):
         error = masked_mean((recons - acts).pow(2).sum(dim=-1), mask)
         return error, f, dict(mse=error, reg=sparsity)
 
-    def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
-        optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, momentum=0.5, nesterov=False)
-        scheduler = LambdaLR(optimizer, lambda step: min(1.0, (1.0 / (cooldown - 1.0)) * ((step / max_steps) - 1.0)))
+    def optimizers(self, max_steps, lr=0.03):
+        optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, nesterov=False)
+        scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.0, total_iters=max_steps)
         return optimizer, scheduler
