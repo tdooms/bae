@@ -14,6 +14,7 @@ from torch.backends import opt_einsum
 opt_einsum.strategy = "auto-hq"
 # %%
 name = "Qwen/Qwen3-0.6B-Base"
+# name = "Qwen/Qwen3-1.7B-Base"
 
 tokenizer = AutoTokenizer.from_pretrained(name)
 tokenize = lambda dataset: tokenizer(dataset["text"], truncation=True, padding=True, max_length=256)
@@ -24,8 +25,8 @@ model = torch.compile(model)
 train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
 train = train.map(tokenize, batched=True)
 # %%
-for i in range(24):
-    coder = Autoencoder.from_config(model, "ordinary", layer=i, expansion=16, alpha=0.1, tags=[])
+for i in [1]:
+    coder = Autoencoder.from_config(model, "biased", layer=18, expansion=16, alpha=1.0, tags=[])
     project = "coder"
     # project = None
 
@@ -35,13 +36,13 @@ for i in range(24):
         logging_steps=10,
         save_total_limit=5,
         save_steps=512,
-        per_device_train_batch_size=32,
+        per_device_train_batch_size=16,
         do_eval=False,
         report_to="wandb" if project else "none",
         remove_unused_columns=True,
         bf16=True,
         gradient_accumulation_steps=2,
-        max_steps=2**10,
+        max_steps=2**11,
         max_grad_norm=1000,
         run_name=f"{model.name_or_path.split('/')[-1]}-{coder.config.name}",
     )

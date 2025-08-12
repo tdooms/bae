@@ -22,13 +22,13 @@ ordered_sweep = list(islice(runs, 182-6, 182)) + list(islice(runs, 248-5, 248))
 
 results = []
 for run in tqdm(chain(ordered_sweep, mixed_sweep, vanilla_sweep, combined_sweep)):
-    # print(run.name)
     history = run.history()
     _, _, _, kind, layer, expansion, alpha, _ = run.name.rsplit('-')
     
     mse = history["mse"].min()
     reg = history["reg"].min()
     
+    # legacy naming
     if kind == "rainbow":
         kind = "combined"
     

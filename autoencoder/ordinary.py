@@ -52,8 +52,8 @@ class Ordinary(Autoencoder, kind="ordinary"):
 
         sparsity = hoyer(f).mean()
         
-        mse = masked_mean((recons - acts).pow(2).sum(dim=-1), mask)
-        return mse, f, dict(mse=mse, reg=sparsity)
+        error = masked_mean((recons - acts).pow(2).sum(dim=-1), mask)
+        return error, f, dict(mse=error, reg=sparsity)
 
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, momentum=0.5, nesterov=False)

@@ -14,7 +14,7 @@ class Rainbow(Autoencoder, kind="rainbow"):
         super().__init__(model, config)
         
         # TODO: find a way clean to not instantiate this when only evaluating the model
-        # self.triu = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
+        self.triu = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
         self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1), persistent=False)
 
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
@@ -76,9 +76,9 @@ class Rainbow(Autoencoder, kind="rainbow"):
         with torch.no_grad():
             h = nn.functional.linear(f, self.down)
             recons = einsum(h, h, kernel, "... h1, ... h2, h1 h2 -> ...")
-            mse = masked_mean(recons - 2 * h.square().sum(-1) + 1.0, mask)
+            error = masked_mean(recons - 2 * h.square().sum(-1) + 1.0, mask)
         
-        return loss, f, dict(mse=mse, reg=sparsity.mean())
+        return loss, f, dict(mse=error, reg=sparsity.mean())
     
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, momentum=0.95, nesterov=False)

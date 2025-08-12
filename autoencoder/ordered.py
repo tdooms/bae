@@ -59,9 +59,9 @@ class Ordered(Autoencoder, kind="ordered"):
         # Compute the reconstruction error without the regularisation
         with torch.no_grad():
             recons = einsum(f, f, kernel, "... f1, ... f2, f1 f2 -> ...")
-            mse = masked_mean(recons - 2 * f.pow(2).sum(-1) + 1.0, mask)
+            error = masked_mean(recons - 2 * f.pow(2).sum(-1) + 1.0, mask)
         
-        return loss, f, dict(mse=mse, reg=sparsity.mean())
+        return loss, f, dict(mse=error, reg=sparsity.mean())
     
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, momentum=0.95, nesterov=False)

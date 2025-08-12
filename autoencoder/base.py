@@ -2,32 +2,30 @@ import torch
 import wandb
 import os
 import json
+import shutil
 
 from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel
 from utils import Hooked, Input
 from abc import abstractmethod
-from safetensors.torch import save_file, load_file
 from types import SimpleNamespace
+
+from safetensors.torch import save_file, load_file, load_model, save_model
+from huggingface_hub import hf_hub_download, HfApi
 
 def masked_mean(x, mask):
     return (x * mask).sum() / mask.sum()
 
-# def hoyer(x):
-#     # TODO: This should (maybe) be computed over the unmasked elements only.
-#     size = x.size(0) * x.size(1)
-#     return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1) ) - 1.0) / (size**0.5 - 1.0)
-
-def hoyer(x, eps=1e-4):
+def hoyer(x):
     # TODO: This should (maybe) be computed over the unmasked elements only.
     size = x.size(0) * x.size(1)
-    return (x.norm(p=1, dim=(0, 1)) / (x.norm(p=2, dim=(0, 1)) + eps) - 1.0) / (size**0.5 - 1.0)
+    return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1) ) - 1.0) / (size**0.5 - 1.0)
 
 class Placeholder:
     """Use as a placeholder for a model when constrained for memory (there's probably a better way to do this)."""
     def __init__(self, name, d_model, device="cuda", dtype=torch.float16):
         self.config = SimpleNamespace(hidden_size=d_model)
-        self.body = [nn.Identity()] * 100
+        self.model = SimpleNamespace(layers=[nn.Identity()] * 100)
         self.name_or_path = name
         
         self.device = device
@@ -40,13 +38,14 @@ class Config(PretrainedConfig):
         layer: int | None = None,       # Layer to hook the model at
         d_model: int | None = None,     # Model dimension at the hook point
         n_ctx: int = 256,               # Max sampled context length
-        expansion: int = 8,             # Expansion factor for the autoencoder
+        expansion: int = 16,            # Expansion factor for the autoencoder
         bottleneck: int | None = None,  # Bottleneck factor for the Mixed autoencoders
         alpha: float = 0.0,             # Regularisation for activation-based/batch-wise Hoyer sparsity
         beta: float = 0.0,              # Regularisation for weight-based/feature-wise Hoyer sparsity
         warmup: int = 256,              # Warmup steps for the regularisation
         kind: str = "undefined",        # The autoencoder kind (e.g., "vanilla", "ordered", etc.)
         tags: list = [],                # Tags to identify the model
+        base: str | None = None,        # Base model name (e.g., "Qwen/Qwen3-0.6B-Base")
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -65,6 +64,7 @@ class Config(PretrainedConfig):
         
         self.kind = kind
         self.tags = tags
+        self.base = base
         self.kwargs = kwargs
     
     @property
@@ -94,38 +94,59 @@ class Autoencoder(PreTrainedModel):
         self.steps = 0
         
         # TODO: Make this more flexible
-        layer = model.body[config.layer] if hasattr(model, 'body') else model.model.layers[config.layer]
-        # layer = model._orig_mod.transformer.h[config.layer]
+        layer = model.model.layers[config.layer]
         self.hooked = Hooked(model, acts=Input(layer))
 
     def _like(self):
         return dict(device=self.device, dtype=self.dtype)
     
+    def save(self, root="weights", push_to_hub=False, delete_local=False):
+        folder = f"{root}/{self.config.base}/{self.config.name}"
+        os.makedirs(folder, exist_ok=True)
+        
+        save_model(self, f"{folder}/model.safetensors")
+        json.dump(vars(self.config), open(f'{folder}/config.json', 'w'), indent=2)
+        
+        if push_to_hub:
+            repo_id = f"tdooms/{self.config.model}-scope"
+            HfApi().upload_folder(folder_path=folder, path_in_repo=self.config.name, repo_id=repo_id)
+        
+        if delete_local:
+            shutil.rmtree(folder)
+            
     @staticmethod
     def from_config(model, kind, **kwargs):
         # TODO: Make this more flexible
         d_model = model.config.hidden_size
-        return Autoencoder._subclasses[kind].from_config(model, d_model=d_model, **kwargs)
-    
-    def save(self, root="weights"):
-        folder = f"{root}/{self.hooked.model.name_or_path.split('/')[-1]}/{self.config.name}"
-        os.makedirs(folder, exist_ok=True)
-        print(folder)
-        
-        save_file(self.state_dict(), f"{folder}/model.safetensors")
-        open(f"{folder}/config.json", 'w').write(self.config.to_json_string())
-    
+        base = model.name_or_path.split('/')[-1].lower()
+        return Autoencoder._subclasses[kind].from_config(model, d_model=d_model, base=base, **kwargs)
+
     @staticmethod
-    def load(model, kind, layer, expansion, alpha=0.0, beta=0.0, tags=[], root="weights", device='cuda'):
+    def from_storage(model, kind, layer, expansion, alpha=0.0, beta=0.0, tags=[], root="weights", device='cuda'):
+        base = model.name_or_path.split('/')[-1].lower()
         name = Config(kind=kind, layer=layer, expansion=expansion, alpha=alpha, beta=beta, tags=tags, d_model=0).name
-        folder = f"{root}/{model.name_or_path.split('/')[-1]}/{name}"
+        folder = f"{root}/{base}/{name}"
 
         config = Config(**json.load(open(f"{folder}/config.json")))
         coder = Autoencoder._subclasses[config.kind](model, config)
         
-        state = load_file(f"{folder}/model.safetensors", device=device)
-        coder.load_state_dict(state)
-        return coder.to(device)
+        load_model(coder, f"{folder}/model.safetensors", device=device)
+        return coder
+    
+    @staticmethod
+    def from_hub(model, kind, layer, expansion, alpha=0.0, beta=0.0, tags=[], root="tdooms", device='cuda'):
+        base = model.name_or_path.split('/')[-1].lower()
+        name = Config(kind=kind, layer=layer, expansion=expansion, alpha=alpha, beta=beta, tags=tags, d_model=0).name
+        repo = f"{root}/{base}-scope"
+        
+        config_path = hf_hub_download(repo_id=repo, filename=f"{name}/config.json")
+        model_path = hf_hub_download(repo_id=repo, filename=f"{name}/model.safetensors")
+
+        config = Config(**json.load(open(config_path)))
+        coder = Autoencoder._subclasses[config.kind](model, config)
+        
+        load_model(coder, model_path, device=device)
+        return coder
 
     @abstractmethod
     def loss(self, acts, mask): pass
@@ -140,14 +161,14 @@ class Autoencoder(PreTrainedModel):
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5): pass
     
     def forward(self, input_ids, attention_mask, **kwargs):
-        # Sample and normalise the inputs using the L2 norm (not RMS norm)
+        # Sample and normalise the inputs using the L2 norm
         with torch.no_grad():
             _, cache = self.hooked(input_ids[..., :256])
             acts = cache['acts'].type(self.dtype)
             acts = acts * acts.square().sum(-1, keepdim=True).rsqrt()
 
         if self.training:
-            self.steps += 0.5 # Gradient accumulation steps are 2, so we increment by 0.5
+            self.steps += 0.5 # Gradient accumulation steps are 2, so we increment by 0.5, which is ugly
             alpha = self.config.alpha * min(1.0, self.steps / self.config.warmup)
             
             loss, features, metrics = self.loss(acts, attention_mask, alpha)

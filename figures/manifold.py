@@ -33,21 +33,20 @@ vis = Feature(coder, tokenizer, dataset, max_steps=2**4, batch_size=2**5)
 d = coder.down / coder.down.norm(dim=0, keepdim=True)
 g = d.T @ d
 
-# I recommend not looking at the say top 5/10-ish. 
-# There's some dense features which I don't quite understand yet.
-# Their manifolds are interesting though.
-
 gpr = generalized_effective_dimension(g)
 px.scatter(y=gpr.cpu(), x=list(range(gpr.size(-1))), template='plotly_white', title="Number of active elements in the overlap matrix").show()
 print(gpr.topk(200).indices.tolist()[150:])
 # %%
-# idx = 9788 # this/these/those - paper
+# ---- Manifolds in the paper ----
+# idx = 9788 # this/these/those
 idx = 5881 # although/while
-# idx = 15612 # none/not/any/little - paper
+# idx = 15612 # none/not/any/little
+# idx = 3569 # first number in year (circle)
+
+# ---- Other cool manifolds ----
 # idx = 13346 # make/made
 # idx = 3732 # predict numerals, numeric literals
 # idx = 3294 # numbers in years
-# idx = 3569 # first number in year (circle) - paper
 
 fig = px.histogram(g[idx].cpu(), template='plotly_white', log_y=True, width=500, height=300, range_x=[-1.1, 1.1])
 fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False).show()

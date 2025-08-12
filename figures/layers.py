@@ -26,6 +26,7 @@ for run in tqdm(chain(combined_sweep, ordered_sweep, mixed_sweep, vanilla_sweep,
     mse = history["mse"].min()
     reg = history["reg"].min()
     
+    # legacy naming
     if kind == "rainbow":
         kind = "combined"
     if kind == "ordinary":

@@ -21,7 +21,7 @@ model = Placeholder(d_model=1024, name="Qwen/Qwen3-0.6B-Base")
 coders = [Autoencoder.load(model, "rainbow", layer=18, expansion=16, alpha=i/10).half() for i in tqdm(range(11))]
 # %%
 # Compute the similarity between all pairs of coders, this can take a few minutes.
-# Similarity is computed the normalised MSE between the tensors representing the autocoders.
+# Similarity is computed the normalised error between the tensors representing the autocoders.
 
 def similarities(a, b, reg=20.0):
     # Compute the norm of the kernel matrix

@@ -55,10 +55,10 @@ class Gated(Autoencoder, kind="gated"):
         cross = (h * g).sum(-1)
         
         # Compute the reconstruction and the loss
-        mse = masked_mean(recons - 2 * cross + 1.0, mask)
+        error = masked_mean(recons - 2 * cross + 1.0, mask)
         loss = masked_mean(recons * reg - 2 * cross * reg + 1.0, mask)
 
-        return loss, f, dict(mse=mse, reg=sparsity)
+        return loss, f, dict(mse=error, reg=sparsity)
 
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, momentum=0.5, nesterov=False)

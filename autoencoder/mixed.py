@@ -13,8 +13,6 @@ class Mixed(Autoencoder, kind="mixed"):
     """A tensor-based autoencoder class which mixes its features."""
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
-        self.supports_gradient_checkpointing = True
-        self.gradient_checkpointing = True
         
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
@@ -57,10 +55,10 @@ class Mixed(Autoencoder, kind="mixed"):
         cross = h.square().sum(-1)
         
         # Compute the reconstruction and the loss
-        mse = masked_mean(recons - 2 * cross + 1.0, mask)
+        error = masked_mean(recons - 2 * cross + 1.0, mask)
         loss = masked_mean(recons * reg - 2 * cross * reg + 1.0, mask)
 
-        return loss, f, dict(mse=mse, reg=sparsity)
+        return loss, f, dict(mse=error, reg=sparsity)
     
     def optimizers(self, max_steps, lr=0.01, cooldown=0.5):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, momentum=0.95, nesterov=False)
