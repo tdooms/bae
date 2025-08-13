@@ -1,5 +1,5 @@
 from autoencoder.mixed import Mixed
-from autoencoder.rainbow import Rainbow
+from autoencoder.combined import Combined
 from autoencoder.ordered import Ordered
 from autoencoder.vanilla import Vanilla
 from autoencoder.gated import Gated

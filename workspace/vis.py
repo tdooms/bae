@@ -23,10 +23,10 @@ dataset = dataset.map(tokenize, batched=True)
 # %%
 # coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
 # coder = Autoencoder.load(model, "biased", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
-coder = Autoencoder.load(model, "vanilla", layer=18, expansion=16, alpha=0.1, tags=[]).eval().half()
+coder = Autoencoder.load(model, "vanilla", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
 # %%
 vis = Feature(coder, tokenizer, dataset, max_steps=2**5, batch_size=2**5)
 # %%
-vis(list(range(20)), dark=True, k=5)
+vis(list(range(10)), dark=True, k=5)
 # %%
 vis(13, k=20)

@@ -25,9 +25,12 @@ for i in range(24):
 
 # %%
 
+for i in range(11):
+    base = model.name_or_path.split('/')[-1].lower()
+    name = Config(kind="mixed", layer=18, expansion=16, alpha=i/10, beta=0.0, tags=[], d_model=0).name
+    folder = f"weights/{base}/{name.replace('l0', 'l')}"
 
-
-
+    HfApi().upload_folder(folder_path=folder, path_in_repo=name, repo_id=repo)
 
 # %%
 

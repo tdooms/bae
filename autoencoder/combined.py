@@ -8,7 +8,7 @@ from quimb.tensor import Tensor
 from utils import Muon
 from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
 
-class Rainbow(Autoencoder, kind="rainbow"):
+class Combined(Autoencoder, kind="combined"):
     """A tensor-based autoencoder class which mixes its features."""
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
@@ -27,7 +27,7 @@ class Rainbow(Autoencoder, kind="rainbow"):
 
     @staticmethod
     def from_config(model, **kwargs):
-        return Rainbow(model, Config(kind="rainbow", **kwargs))
+        return Combined(model, Config(kind="combined", **kwargs))
 
     def kernel(self):
         return self.down @ ((self.left @ self.left.T) * (self.right @ self.right.T)) @ self.down.T

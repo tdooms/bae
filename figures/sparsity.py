@@ -49,7 +49,7 @@ for kind in ["vanilla", "ordered"]:
     df = pd.DataFrame.from_dict(dict(hoyer=hoyer.cpu(), l0=l0.cpu()))
 
     fig = px.scatter(df, x=df.index, y="hoyer", opacity=0.3, marginal_y="histogram", template="plotly_white")
-    fig.update_yaxes(title="<b>Sparsity</b>", range=(0, 1.005)).update_xaxes(title="<b>Latent index</b>", range=(0, 1024*16), row=1, col=1, showgrid=False)
+    fig.update_yaxes(title="<b>Density</b>", range=(0, 1.005)).update_xaxes(title="<b>Latent index</b>", range=(0, 1024*16), row=1, col=1, showgrid=False)
     fig.update_layout(yaxis2=dict(title=""), xaxis2=dict(title=""))
     fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), width=500, height=300)
     fig.update_layout(font=FONT)

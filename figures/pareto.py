@@ -41,7 +41,7 @@ print(df)
 # %%
 fig = px.line(df, x="mse", y="reg", color="kind", template="plotly_white", markers=True, width=600, height=400, log_y=True, color_discrete_map=COLORS)
 fig.update_traces(marker=dict(size=8))
-fig.update_xaxes(title="<b>Reconstruction error</b>").update_yaxes(title="<b>Sparsity</b>")
+fig.update_xaxes(title="<b>Reconstruction error</b>").update_yaxes(title="<b>Density</b>")
 fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10), font=FONT)
 
 fig.add_annotation(
