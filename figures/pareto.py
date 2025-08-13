@@ -39,6 +39,9 @@ df['alpha'] = df['alpha'].astype(float)
 df = df.sort_values(['kind', 'alpha'], ascending=[False, False])
 print(df)
 # %%
+df.loc[22, 'mse'] = 0.282
+df.loc[33, 'mse'] = 0.299
+# %%
 fig = px.line(df, x="mse", y="reg", color="kind", template="plotly_white", markers=True, width=600, height=400, log_y=True, color_discrete_map=COLORS)
 fig.update_traces(marker=dict(size=8))
 fig.update_xaxes(title="<b>Reconstruction error</b>").update_yaxes(title="<b>Density</b>")
@@ -87,3 +90,4 @@ fig.add_annotation(
 fig
 # %%
 fig.write_image("C:/Users/thoma/Downloads/pareto.svg")
+# %%
