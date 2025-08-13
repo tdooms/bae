@@ -30,8 +30,11 @@ dataset = dataset.map(tokenize, batched=True)
 max_steps = 2**2
 hoyer, l0 = [], []
 
+# coder = Autoencoder.load(model, "ordinary", layer=18, expansion=16, alpha=0.1, tags=[]).eval().half()
+# coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=1.5, tags=[]).eval().half()
+
 for kind in ["vanilla", "ordered"]:
-    coder = Autoencoder.load(model, kind, layer=18, expansion=16, alpha=1.0, tags=[], hf=True).eval().half()
+    coder = Autoencoder.load(model, kind, layer=18, expansion=16, alpha=1.0, tags=[], root="//wsl.localhost/Ubuntu/home/thomas/bae/weights").eval().half()
 
     loader = DataLoader(dataset, batch_size=32, shuffle=False)
     acts = []
