@@ -6,7 +6,7 @@ from einops import einsum
 from quimb.tensor import Tensor
 
 from utils import Muon
-from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
+from autoencoder.base import Autoencoder, Config, hoyer, masked_mean, tiled_inner_product, precompute_indices
 
 class Vanilla(Autoencoder, kind="vanilla"):
     """A tensor-based autoencoder class which mixes its features."""
@@ -18,6 +18,8 @@ class Vanilla(Autoencoder, kind="vanilla"):
         
         torch.nn.init.orthogonal_(self.left.data)
         torch.nn.init.orthogonal_(self.right.data)
+        
+        self.inds = precompute_indices(config.d_features)
 
     @staticmethod
     def from_config(model, **kwargs):
@@ -45,7 +47,8 @@ class Vanilla(Autoencoder, kind="vanilla"):
         reg = 1.0 - alpha * sparsity
         
         # Compute the self and cross terms of the loss
-        recons = einsum(f, f, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
+        # recons = einsum(f, f, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
+        recons = tiled_inner_product(f, self.left, self.right, self.inds)
         cross = f.square().sum(-1)
 
         # Compute the reconstruction and the loss

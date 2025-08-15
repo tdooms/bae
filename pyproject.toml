@@ -1,7 +1,7 @@
 [project]
-name = "homework"
+name = "bae"
 version = "0.1.0"
-description = "X-nets"
+description = "Bilinear Autoencoders"
 readme = "README.md"
 requires-python = ">=3.13"
 

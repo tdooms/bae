@@ -24,7 +24,7 @@ def norm(a, b, kind):
 sims = []
 # Create figure x, takes about ~4 minutes on my machine
 for kind in ["vanilla", "mixed", "ordered", "rainbow"]:
-    coders = [Autoencoder.load(model, kind, layer=18, expansion=16, alpha=i/10, root="//wsl.localhost/Ubuntu/home/thomas/bae/weights").eval().half() for i in tqdm(range(11))]
+    coders = [Autoencoder.load(model, kind, layer=18, expansion=16, alpha=i/10, hf=True).eval().half() for i in tqdm(range(11))]
 
     norms = [norm(a, b, kind) for a, b in tqdm(list(product(coders, coders)))]
     norms = torch.tensor(norms).reshape(len(coders), len(coders))

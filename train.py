@@ -26,9 +26,9 @@ train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="tra
 train = train.map(tokenize, batched=True)
 # %%
 for i in [1]:
-    coder = Autoencoder.from_config(model, "biased", layer=18, expansion=16, alpha=1.0, tags=[])
-    project = "coder"
-    # project = None
+    coder = Autoencoder.from_config(model, "vanilla", layer=18, expansion=48, alpha=1.0, tags=[])
+    # project = "coder"
+    project = None
 
     args = TrainingArguments(
         seed=0,
@@ -42,7 +42,7 @@ for i in [1]:
         remove_unused_columns=True,
         bf16=True,
         gradient_accumulation_steps=2,
-        max_steps=2**11,
+        max_steps=2**10,
         max_grad_norm=1000,
         run_name=f"{model.name_or_path.split('/')[-1]}-{coder.config.name}",
     )

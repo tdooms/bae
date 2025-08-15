@@ -2,6 +2,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from einops import einsum
 
+import pandas as pd
 import plotly.express as px
 import torch
 
@@ -44,7 +45,7 @@ class Manifold:
         self.inputs = torch.stack(inputs, dim=0).flatten(0, 2)
         self.outputs = torch.stack(outputs, dim=0).flatten(0, 2)
     
-    def __call__(self, k=2**13, total=-1):
+    def to_dataframe(self, k=2**13, total=-1):
         # I know this throws away a single sample but I'm too lazy to fix it right now.
         max_vals, max_inds = self.vals[:total].topk(k=k, dim=0, largest=True)
         min_vals, min_inds = self.vals[:total].topk(k=k, dim=0, largest=False)
@@ -56,15 +57,27 @@ class Manifold:
         inp_toks = self.tokenizer.convert_ids_to_tokens(self.inputs[top_inds].cpu())
         out_toks = self.tokenizer.convert_ids_to_tokens(self.outputs[top_inds].cpu())
         tokens = [(i + ' -> ' + o).replace('Ġ', ' ') for i, o in zip(inp_toks, out_toks)]
-
+        
+        return pd.DataFrame(dict(
+            x=top_feats[:, 0].detach().cpu().numpy(),
+            y=top_feats[:, 1].detach().cpu().numpy(),
+            z=top_feats[:, 2].detach().cpu().numpy(),
+            value=top_vals.detach().cpu().numpy(),
+            token=tokens,
+        ))
+    
+    def __call__(self, **kwargs):
+        df = self.to_dataframe(**kwargs)
+        
         fig = px.scatter_3d(
-            x=top_feats[:, 0].cpu(),
-            y=top_feats[:, 1].cpu(),
-            z=top_feats[:, 2].cpu(),
-            color=top_vals.cpu(),
+            df,
+            x="x",
+            y="y",
+            z="z",
+            color="value",
+            hover_name="token",
             color_continuous_midpoint=0.0,
             color_continuous_scale="RdBu",
-            hover_name=tokens,
             height=800, 
             width=800
         )
