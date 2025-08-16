@@ -20,7 +20,7 @@ class TopK(nn.Module):
         
         return x * mask
 
-class Ordinary(Autoencoder, kind="ordinary"):
+class Baseline(Autoencoder, kind="baseline"):
     """A tensor-based autoencoder class which mixes its features."""
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
@@ -34,18 +34,18 @@ class Ordinary(Autoencoder, kind="ordinary"):
 
     @staticmethod
     def from_config(model, **kwargs):
-        return Ordinary(model, Config(kind="ordinary", **kwargs))
+        return Baseline(model, Config(kind="baseline", **kwargs))
     
     def kernel(self):
-        raise NotImplementedError("Ordinary autoencoders do not use a kernel.")
+        raise NotImplementedError("Baseline autoencoders do not use a kernel.")
 
     def network(self, mod='inp'):
-        raise NotImplementedError("Ordinary autoencoders do not use a network representation.")
+        raise NotImplementedError("Baseline autoencoders do not use a network representation.")
     
     def features(self, acts):
         return self.activation(nn.functional.linear(acts, self.encoder))
 
-    # @torch.compile(fullgraph=True)
+    @torch.compile(fullgraph=True)
     def loss(self, acts, mask, _):
         f = self.features(acts)
         recons = nn.functional.linear(f, self.decoder)

@@ -102,7 +102,7 @@ torch.testing.assert_close(t_naive, t_dense, rtol=1e-3, atol=1e-3)
 
 # Test gradients
 f.requires_grad_(True)
-L.requires_grad_(True) 
+L.requires_grad_(True)
 R.requires_grad_(True)
 
 # Compute reference gradients

@@ -39,7 +39,7 @@ fig.for_each_annotation(lambda a: a.update(text=names[int(a.text.split("=")[-1])
 fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=22, b=10), font=FONT)
 fig.show()
 # %%
-fig.write_image("C:/Users/thoma/Downloads/sparsities.svg")
+fig.write_image("C:/Users/thoma/Downloads/frobenius.svg")
 # %%
 from scipy.optimize import linear_sum_assignment
 d = coders[0].config.d_features

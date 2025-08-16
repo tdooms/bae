@@ -26,7 +26,7 @@ train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="tra
 train = train.map(tokenize, batched=True)
 # %%
 for i in [1]:
-    coder = Autoencoder.from_config(model, "vanilla", layer=18, expansion=48, alpha=1.0, tags=[])
+    coder = Autoencoder.from_config(model, "vanilla", layer=18, expansion=16, alpha=1.0, tags=[])
     # project = "coder"
     project = None
 
