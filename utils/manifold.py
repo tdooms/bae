@@ -7,8 +7,8 @@ import plotly.express as px
 import torch
 
 class Manifold:
-    def __init__(self, dataset, hooked, tokenizer, forms, **kwargs):
-        self.eigvals, self.eigvecs = torch.linalg.eigh(forms.float())
+    def __init__(self, dataset, hooked, tokenizer, form, **kwargs):
+        self.eigvals, self.eigvecs = torch.linalg.eigh(form.float())
         self.dataset = dataset
         self.hooked = hooked
         self.tokenizer = tokenizer
@@ -21,8 +21,8 @@ class Manifold:
     
     def sample(self, batch_size=2**5, max_steps=2**3):
         inds = self.eigvals.abs().topk(k=3, dim=-1).indices
-        eigvecs = self.eigvecs[..., inds].half()
-        eigvals = self.eigvals[..., inds].half()
+        eigvecs = self.eigvecs[..., inds].type(self.hooked.model.dtype)
+        eigvals = self.eigvals[..., inds].type(self.hooked.model.dtype)
         
         loader = DataLoader(self.dataset, batch_size=batch_size, shuffle=False)
         vals, feats, inputs, outputs = [], [], [], []
@@ -35,7 +35,12 @@ class Manifold:
             outputs += [cache[0].logits.argmax(dim=-1)]
             
             acts = cache[1]['acts']
-            v = einsum(acts / acts.pow(2).sum(-1, keepdim=True).sqrt(), eigvecs, "... x, x v -> ... v")
+            acts = acts * acts.pow(2).sum(-1, keepdim=True).rsqrt()
+            
+            if self.eigvals.size(-1) == acts.size(-1) + 1:
+                acts = torch.cat([torch.ones_like(acts[..., :1]), acts], dim=-1)
+
+            v = einsum(acts, eigvecs, "... x, x v -> ... v")
             
             feats += [v]
             vals += [einsum(v.pow(2), eigvals, "... v, v -> ...")]
@@ -59,10 +64,10 @@ class Manifold:
         tokens = [(i + ' -> ' + o).replace('Ġ', ' ') for i, o in zip(inp_toks, out_toks)]
         
         return pd.DataFrame(dict(
-            x=top_feats[:, 0].detach().cpu().numpy(),
-            y=top_feats[:, 1].detach().cpu().numpy(),
-            z=top_feats[:, 2].detach().cpu().numpy(),
-            value=top_vals.detach().cpu().numpy(),
+            x=top_feats[:, 0].float().detach().cpu().numpy(),
+            y=top_feats[:, 1].float().detach().cpu().numpy(),
+            z=top_feats[:, 2].float().detach().cpu().numpy(),
+            value=top_vals.float().detach().cpu().numpy(),
             token=tokens,
         ))
     

@@ -6,7 +6,7 @@ from einops import einsum
 from quimb.tensor import Tensor
 
 from utils import Muon
-from autoencoder.base import Autoencoder, Config, hoyer, masked_mean, tiled_inner_product, precompute_indices
+from autoencoder.base import Autoencoder, Config, hoyer, masked_mean, block_indices
 
 class Vanilla(Autoencoder, kind="vanilla"):
     """A tensor-based autoencoder class which mixes its features."""
@@ -19,7 +19,7 @@ class Vanilla(Autoencoder, kind="vanilla"):
         torch.nn.init.orthogonal_(self.left.data)
         torch.nn.init.orthogonal_(self.right.data)
         
-        self.inds = precompute_indices(config.d_features)
+        self.inds = block_indices(config.d_features)
 
     @staticmethod
     def from_config(model, **kwargs):
@@ -35,6 +35,12 @@ class Vanilla(Autoencoder, kind="vanilla"):
              & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', 'i:1'], tags=['U']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
     
+    def inner(self, f):
+        """Efficient evalation of the kernelised inner product."""
+        pattern = "...h, hl, hr, ...k, kl, kr -> ..."
+        sub = lambda s, e: (f[..., s:e], self.left[s:e], self.right[s:e])
+        return sum((2 if s1 != s2 else 1) * torch.einsum(pattern, *sub(s1, e1), *sub(s2, e2)) for s1, e1, s2, e2 in self.inds)
+
     def features(self, acts):
         return nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right)
 
@@ -48,7 +54,7 @@ class Vanilla(Autoencoder, kind="vanilla"):
         
         # Compute the self and cross terms of the loss
         # recons = einsum(f, f, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
-        recons = tiled_inner_product(f, self.left, self.right, self.inds)
+        recons = self.inner(f)
         cross = f.square().sum(-1)
 
         # Compute the reconstruction and the loss

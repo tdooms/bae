@@ -11,22 +11,23 @@ from autoencoder import Autoencoder
 import torch
 # %%
 torch.set_grad_enabled(False)
-name = "Qwen/Qwen3-0.6B-Base"
+# name = "Qwen/Qwen3-0.6B-Base"
+name = "google/gemma-3-270m"
 
 tokenizer = AutoTokenizer.from_pretrained(name)
-model = AutoModelForCausalLM.from_pretrained(name, torch_dtype=torch.float16, device_map="cuda")
+model = AutoModelForCausalLM.from_pretrained(name, torch_dtype="auto", device_map="cuda")
 tokenize = lambda dataset: tokenizer(dataset["text"], truncation=True, padding=True, max_length=256)
 
 dataset = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
-dataset = Dataset.from_list(list(dataset.take(2**12))).with_format("torch")
+dataset = Dataset.from_list(list(dataset.take(2**11))).with_format("torch")
 dataset = dataset.map(tokenize, batched=True)
 # %%
-# coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
+coder = Autoencoder.load(model, "mixed", layer=12, expansion=16, alpha=1.0, tags=[]).eval()
 # coder = Autoencoder.load(model, "biased", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
-coder = Autoencoder.load(model, "vanilla", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
+# coder = Autoencoder.load(model, "mani", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
 # %%
 vis = Feature(coder, tokenizer, dataset, max_steps=2**5, batch_size=2**5)
 # %%
-vis(list(range(10)), dark=True, k=5)
+vis(list(range(20, 30)), dark=True, k=5)
 # %%
 vis(13, k=20)

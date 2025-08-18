@@ -13,7 +13,8 @@ import os
 from torch.backends import opt_einsum
 opt_einsum.strategy = "auto-hq"
 # %%
-name = "Qwen/Qwen3-0.6B-Base"
+name = "google/gemma-3-270m"
+# name = "Qwen/Qwen3-0.6B-Base"
 # name = "Qwen/Qwen3-1.7B-Base"
 
 tokenizer = AutoTokenizer.from_pretrained(name)
@@ -26,9 +27,9 @@ train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="tra
 train = train.map(tokenize, batched=True)
 # %%
 for i in [1]:
-    coder = Autoencoder.from_config(model, "vanilla", layer=18, expansion=16, alpha=1.0, tags=[])
-    # project = "coder"
-    project = None
+    coder = Autoencoder.from_config(model, "mixed", layer=12, expansion=16, alpha=1.0, bottleneck=2, tags=[])
+    project = "coder"
+    # project = None
 
     args = TrainingArguments(
         seed=0,

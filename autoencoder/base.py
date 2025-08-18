@@ -23,20 +23,10 @@ def hoyer(x):
     size = x.size(0) * x.size(1)
     return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1)) - 1.0) / (size**0.5 - 1.0)
 
-def precompute_indices(total, block=4096):
+def block_indices(total, block=4096):
     """Compute the indices for the tiles in the inner product"""
     lst = combinations_with_replacement(range(0, total, block), 2)
     return [(s1, min(s1 + block, total), s2, min(s2 + block, total)) for s1, s2 in lst]
-
-def tiled_inner_product(f, L, R, indices):
-    """Block-wise evalation of the kernelised inner product, leveraging the symmetry."""
-    result = torch.zeros_like(f[..., 0])
-    
-    for s1, e1, s2, e2 in indices:
-        scale = 2 if s1 != s2 else 1
-        result += scale * torch.einsum("...h, ...k, hl, kl, hr, kr -> ...", f[..., s1:e1], f[..., s2:e2], L[s1:e1], L[s2:e2], R[s1:e1], R[s2:e2])
-
-    return result
 
 class Placeholder:
     """Use as a placeholder for a model when constrained for memory (there's probably a better way to do this)."""

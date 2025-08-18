@@ -16,47 +16,48 @@ class Mani(Autoencoder, kind="mani"):
         
         self.left = nn.Linear(config.d_model, config.d_features, bias=True)
         self.right = nn.Linear(config.d_model, config.d_features, bias=True)
-        self.down = nn.Linear(config.d_features, config.d_bottleneck, bias=True)
+        self.down = nn.Linear(config.d_features, config.d_bottleneck, bias=False)
+        
+        self.offset = nn.Parameter(torch.zeros(config.d_bottleneck))
         
         torch.nn.init.orthogonal_(self.left.weight)
         torch.nn.init.orthogonal_(self.right.weight)
-        torch.nn.init.orthogonal_(self.down.data)
+        torch.nn.init.orthogonal_(self.down.weight)
+        
+        torch.nn.init.zeros_(self.left.bias)
+        torch.nn.init.zeros_(self.right.bias)
 
     @staticmethod
     def from_config(model, **kwargs):
         return Mani(model, Config(kind="mani", **kwargs))
     
     def network(self, mod='inp'):
-        u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
-        
-        return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'in:0'], tags=['U']) \
-             & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'in:1'], tags=['U']) \
-             & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
-             & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
+        pass
     
     def kernel(self):
-        return self.down @ ((self.left @ self.left.T) * (self.right @ self.right.T)) @ self.down.T
-    
+        l = torch.cat([self.left.bias[:, None], self.left.weight], dim=1)
+        r = torch.cat([self.right.bias[:, None], self.right.weight], dim=1)
+        return self.down.weight @ ((l @ l.T) * (r @ r.T)) @ self.down.weight.T
+
     def features(self, acts):
-        return nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right)
+        return nn.functional.linear(self.left(acts) * self.right(acts), self.down.weight) + self.offset
     
     @torch.compile(fullgraph=True)
     def loss(self, acts, mask, alpha):
         # Compute the features and hidden representation
         f = self.features(acts)
-        h = nn.functional.linear(f, self.down)
         
         # Compute the regularisation term
-        sparsity = hoyer(h).mean()
+        sparsity = hoyer(f + self.offset).mean()
         reg = 1.0 - alpha * sparsity 
         
         # Compute the self and cross terms of the loss
-        recons = einsum(h, h, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
-        cross = h.square().sum(-1)
+        recons = einsum(f, f, self.kernel(), "... f1, ... f2, f1 f2 -> ...")
+        cross = f.square().sum(-1)
         
         # Compute the reconstruction and the loss
-        error = masked_mean(recons - 2 * cross + 1.0, mask)
-        loss = masked_mean(recons * reg - 2 * cross * reg + 1.0, mask)
+        error = masked_mean(recons - 2 * cross + 4.0, mask) / 4.0
+        loss = masked_mean(recons * reg - 2 * cross * reg + 4.0, mask) / 4.0
 
         return loss, f, dict(mse=error, reg=sparsity)
     

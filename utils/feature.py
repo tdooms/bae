@@ -43,14 +43,14 @@ class Feature:
     @staticmethod
     def color_str(str, color):
         r, g, b = color
-        str = str[2:] if str.startswith("##") else " " + str
+        str = (str[2:] if str.startswith("##") else " " + str).replace('\n', ' ')
         return f"\033[48;2;{int(r)};{int(g)};{int(b)}m{str}\033[0m"
     
     @staticmethod
     def color_line(line, colors, start, end):
         return "".join([Feature.color_str(line[i], colors[i]) for i in range(start, end)]).replace('Ġ', '')
 
-    def color_inputs(self, batch, feature, view=range(-20, 10), dark=True, largest=True):
+    def color_inputs(self, batch, feature, view=range(-10, 10), dark=True, largest=True):
         features = self.model(**batch)['features']
         values = features[..., feature]
         tokens = [self.tokenizer.convert_ids_to_tokens(ids) for ids in batch['input_ids']]
