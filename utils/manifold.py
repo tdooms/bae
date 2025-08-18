@@ -17,12 +17,12 @@ class Manifold:
     
     def spectrum(self, threshold=1e-3):
         filtered = self.eigvals[self.eigvals.abs() > threshold]
-        return px.line(filtered.cpu(), template='plotly_white')
-    
+        
+        fig = px.line(filtered.cpu(), template='plotly_white', width=500, height=200)
+        return fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
+
     def sample(self, batch_size=2**5, max_steps=2**3):
         inds = self.eigvals.abs().topk(k=3, dim=-1).indices
-        eigvecs = self.eigvecs[..., inds].type(self.hooked.model.dtype)
-        eigvals = self.eigvals[..., inds].type(self.hooked.model.dtype)
         
         loader = DataLoader(self.dataset, batch_size=batch_size, shuffle=False)
         vals, feats, inputs, outputs = [], [], [], []
@@ -40,10 +40,10 @@ class Manifold:
             if self.eigvals.size(-1) == acts.size(-1) + 1:
                 acts = torch.cat([torch.ones_like(acts[..., :1]), acts], dim=-1)
 
-            v = einsum(acts, eigvecs, "... x, x v -> ... v")
+            v = einsum(acts, self.eigvecs.to(self.hooked.dtype), "... x, x v -> ... v")
             
-            feats += [v]
-            vals += [einsum(v.pow(2), eigvals, "... v, v -> ...")]
+            feats += [v[..., inds]]
+            vals += [einsum(v.pow(2), self.eigvals.to(self.hooked.dtype), "... v, v -> ... v").pow(2).sum(-1)]
         
         self.vals = torch.stack(vals, dim=0).flatten(0, 2)
         self.feats = torch.stack(feats, dim=0).flatten(0, 2)
@@ -51,23 +51,21 @@ class Manifold:
         self.outputs = torch.stack(outputs, dim=0).flatten(0, 2)
     
     def to_dataframe(self, k=2**13, total=-1):
+        k = min(k, self.vals.size(0)-1)
         # I know this throws away a single sample but I'm too lazy to fix it right now.
         max_vals, max_inds = self.vals[:total].topk(k=k, dim=0, largest=True)
-        min_vals, min_inds = self.vals[:total].topk(k=k, dim=0, largest=False)
-        top_vals, top_inds = torch.cat([max_vals, min_vals], dim=0), torch.cat([max_inds, min_inds], dim=0)
-
-        top_feats = self.feats[top_inds]
+        max_feats = self.feats[max_inds]
 
         # Compute the current token string combined with the model prediction token (inp -> out)
-        inp_toks = self.tokenizer.convert_ids_to_tokens(self.inputs[top_inds].cpu())
-        out_toks = self.tokenizer.convert_ids_to_tokens(self.outputs[top_inds].cpu())
+        inp_toks = self.tokenizer.convert_ids_to_tokens(self.inputs[max_inds].cpu())
+        out_toks = self.tokenizer.convert_ids_to_tokens(self.outputs[max_inds].cpu())
         tokens = [(i + ' -> ' + o).replace('Ġ', ' ') for i, o in zip(inp_toks, out_toks)]
         
         return pd.DataFrame(dict(
-            x=top_feats[:, 0].float().detach().cpu().numpy(),
-            y=top_feats[:, 1].float().detach().cpu().numpy(),
-            z=top_feats[:, 2].float().detach().cpu().numpy(),
-            value=top_vals.float().detach().cpu().numpy(),
+            x=max_feats[:, 0].float().detach().cpu().numpy(),
+            y=max_feats[:, 1].float().detach().cpu().numpy(),
+            z=max_feats[:, 2].float().detach().cpu().numpy(),
+            value=max_vals.float().detach().cpu().numpy(),
             token=tokens,
         ))
     
@@ -81,6 +79,7 @@ class Manifold:
             z="z",
             color="value",
             hover_name="token",
+            hover_data={"x": False, "y": False, "z": False, "value": False, "token": False},
             color_continuous_midpoint=0.0,
             color_continuous_scale="RdBu",
             height=800, 

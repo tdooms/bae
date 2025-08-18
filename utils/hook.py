@@ -13,6 +13,7 @@ class Hooked:
     """A simple combination of NNSight and TransformerLens since I didn't want either as dependency."""
     def __init__(self, model, *args, **kwargs):
         self.device = model.device
+        self.dtype = model.dtype
         self.model = model
         self.modules = kwargs | {i: arg for i, arg in enumerate(args)}
         self.activations = defaultdict()

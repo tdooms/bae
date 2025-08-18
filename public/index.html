@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>3D Scatter</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-dsv@3/dist/d3-dsv.min.js"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; display: grid; place-items: center; height: 100vh; }
+    #chart { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="chart"></div>
+  <script>
+    const CSV_FILES = [
+      { name: 'Year Circle', url: 'data/year-circle.csv' },
+      { name: 'New Triangle', url: 'data/new-triangle.csv' },
+      { name: 'Negation Directions', url: 'data/negation-directions.csv' },
+      { name: 'Conjunction Clusters', url: 'data/conjunction-clusters.csv' }
+    ];
+
+    // Create dropdown
+    const dropdown = document.createElement('select');
+    dropdown.style.position = 'absolute';
+    dropdown.style.top = '10px';
+    dropdown.style.left = '50%';
+    dropdown.style.transform = 'translateX(-50%)';
+    dropdown.style.zIndex = '1000';
+    dropdown.style.padding = '5px';
+    dropdown.style.fontSize = '14px';
+    
+    CSV_FILES.forEach((file, index) => {
+      const option = document.createElement('option');
+      option.value = file.url;
+      option.textContent = file.name;
+      if (index === 0) option.selected = true;
+      dropdown.appendChild(option);
+    });
+    
+    document.body.appendChild(dropdown);
+    
+    let CSV_URL = CSV_FILES[0].url;
+    
+    dropdown.addEventListener('change', async (e) => {
+      CSV_URL = e.target.value;
+      try {
+        const rows = await loadCSV(CSV_URL);
+        updateChart(rows);
+      } catch (err) {
+        console.error('Failed to load CSV:', err);
+      }
+    });
+
+    function updateChart(rows) {
+      const x = [], y = [], z = [], c = [], text = [];
+      for (const r of rows) {
+        const xi = num(r.x), yi = num(r.y), zi = num(r.z), vi = num(r.value);
+        if (xi === null || yi === null || zi === null || vi === null) continue;
+        x.push(xi); y.push(yi); z.push(zi); c.push(vi); text.push(r.token ?? '');
+      }
+      
+      const update = { x: [x], y: [y], z: [z], 'marker.color': [c], text: [text] };
+      Plotly.restyle('chart', update);
+    }
+
+    async function loadCSV(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+      const text = await res.text();
+      return d3.csvParse(text);
+    }
+
+    function num(x) { const v = +x; return Number.isFinite(v) ? v : null; }
+
+    (async function main() {
+      const rows = await loadCSV(CSV_URL);
+
+      const x = [], y = [], z = [], c = [], text = [];
+      for (const r of rows) {
+        const xi = num(r.x), yi = num(r.y), zi = num(r.z), vi = num(r.value);
+        if (xi === null || yi === null || zi === null || vi === null) continue;
+        x.push(xi); y.push(yi); z.push(zi); c.push(vi); text.push(r.token ?? '');
+      }
+    // Increase hover font size
+    const hoverStyle = document.createElement('style');
+    hoverStyle.textContent = `
+        .hovertext text {
+            font-size: 16px !important;
+            font-weight: bold !important;
+        }
+    `;
+    document.head.appendChild(hoverStyle);
+    const trace = {
+      type: 'scatter3d',
+      mode: 'markers',
+      x, y, z,
+      text, // token for hover
+      hovertemplate: '%{text}<extra></extra>',
+      marker: {
+        size: 7.0,
+        color: c,
+        colorscale: [
+          [0, 'rgb(222,235,247)'],
+          [0.2, 'rgb(158,202,225)'],
+          [0.4, 'rgb(107,174,214)'],
+          [0.6, 'rgb(66,146,198)'],
+          [0.8, 'rgb(33,113,181)'],
+          [1, 'rgb(8,69,148)']
+        ],
+        reversescale: false,
+        showscale: false,
+      }
+    };
+
+      const layout = {
+        margin: { l: 0, r: 0, t: 0, b: 0 },
+        width: window.innerWidth,
+        height: window.innerHeight,
+        scene: {
+          xaxis: { visible: false },
+          yaxis: { visible: false },
+          zaxis: { visible: false },
+        }
+      };
+    const config = { displayModeBar: false };
+
+      Plotly.newPlot('chart', [trace], layout, config);
+    })().catch(err => {
+      document.body.innerHTML = `<pre style="color:#b00; padding:1rem;">${err}</pre>`;
+      console.error(err);
+    });
+  </script>
+</body>
+</html>

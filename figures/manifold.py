@@ -34,31 +34,41 @@ g = d.T @ d
 
 gpr = generalized_effective_dimension(g)
 px.scatter(y=gpr.cpu(), x=list(range(gpr.size(-1))), template='plotly_white', title="Number of active elements in the overlap matrix").show()
-print(gpr.topk(200).indices.tolist()[150:])
+print(gpr.topk(300).indices.tolist()[250:])
 # %%
 # ---- Manifolds in the paper ----
-# idx = 9788 # this/these/those
-# idx = 5881 # although/while
-# idx = 15612 # none/not/any/little
-idx = 3569 # mostly first number in year
+# idx = 5881 # conjunction clusters
+# idx = 3569 # year circle
+# idx = 7745 # new triangle
+idx = 15690 # negation directions
 
 # ---- Other manifolds ----
 # idx = 13346 # make/made
 # idx = 3732 # predict numerals, numeric literals
 # idx = 3294 # numbers in years
+# idx = 14828 # some / any
+# idx = 13858 # make
+# idx = 9788 # this/these/those
+# idx = 15612 # none/not/any/little (connected clusters)
 
-fig = px.histogram(g[idx].cpu(), template='plotly_white', log_y=True, width=500, height=300, range_x=[-1.1, 1.1])
+fig = px.histogram(g[idx].cpu(), template='plotly_white', log_y=True, width=400, height=200, range_x=[-1.1, 1.1])
 fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False).show()
 
 vals, inds = g[idx].abs().topk(k=10)
-vis(inds[:5].tolist(), k=3)
-# %%
+vis(inds[:3].tolist(), k=2)
+# 
 form = einsum(vals, coder.left[inds], coder.right[inds], "out, out in1, out in2 -> in1 in2")
 # form = einsum(torch.randn(5), torch.randn(5, 1024), torch.randn(5, 1024), "out, out in1, out in2 -> in1 in2").to("cuda")
 form = 0.5 * (form + form.T)
 
-manifold = Manifold(dataset, coder.hooked, tokenizer, form, max_steps=2**6)
+manifold = Manifold(dataset, coder.hooked, tokenizer, form, max_steps=2**7)
 manifold.spectrum().show()
 
-manifold(k=75_000)
+manifold(k=2**16)
+# %%
+manifold.to_dataframe(2**16).to_csv("public/data/negation-directions.csv")
+# %%
+import gc
+gc.collect()
+torch.cuda.empty_cache()
 # %%
