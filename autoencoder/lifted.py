@@ -7,7 +7,7 @@ from quimb.tensor import Tensor
 
 from utils import Muon
 
-from autoencoder.base import Autoencoder, Config, hoyer, masked_mean, block_indices
+from autoencoder.base import Autoencoder, Config, masked_mean, block_indices
 
 class TopK(nn.Module):
     """A module that selects the top-k features from the input."""

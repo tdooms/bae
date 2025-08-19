@@ -18,15 +18,33 @@ from itertools import combinations_with_replacement
 def masked_mean(x, mask):
     return (x * mask).sum() / mask.sum()
 
-def hoyer(x):
+def hoyer_density(x):
     # TODO: This should (maybe) be computed over the unmasked elements only.
     size = x.size(0) * x.size(1)
     return (x.norm(p=1, dim=(0, 1)) / x.norm(p=2, dim=(0, 1)) - 1.0) / (size**0.5 - 1.0)
 
+def blocked_inner(f, left, right, inds):
+    """Efficient evaluation of the kernelised inner product."""
+    pattern = "...h, hl, hr, ...k, kl, kr -> ..."
+    sub = lambda s, e: (f[..., s:e], left[s:e], right[s:e])
+    return sum((2 if m1 != m2 else 1) * torch.einsum(pattern, *sub(*m1), *sub(*m2)) for m1, m2 in inds)
+
+def blocked_masked_inner(f, left, right, inds):
+    """Efficient evaluation of the kernelised inner product."""
+    pattern = "...h, hl, hr, ...k, kl, kr, hk -> ..."
+    like = dict(device=f.device, dtype=f.dtype)
+    sub = lambda s, e: (f[..., s:e], left[s:e], right[s:e])
+    return sum((2 if m1 != m2 else 1) * torch.einsum(pattern, *sub(*m1), *sub(*m2), tril_gram_block(f.size(-1), m1, m2, **like)) for m1, m2 in inds)
+
+def tril_gram_block(n, m1, m2, dtype=torch.float16, device=None):
+    i = torch.arange(*m1, device=device, dtype=torch.long)
+    j = torch.arange(*m2, device=device, dtype=torch.long)
+    return (n - torch.maximum(i[:, None], j[None, :])).to(dtype) / n
+
 def block_indices(total, block=4096):
     """Compute the indices for the tiles in the inner product"""
     lst = combinations_with_replacement(range(0, total, block), 2)
-    return [(s1, min(s1 + block, total), s2, min(s2 + block, total)) for s1, s2 in lst]
+    return [((s1, min(s1 + block, total)), (s2, min(s2 + block, total))) for s1, s2 in lst]
 
 class Placeholder:
     """Use as a placeholder for a model when constrained for memory (there's probably a better way to do this)."""
@@ -99,6 +117,7 @@ class Autoencoder(PreTrainedModel):
     def __init__(self, model, config) -> None:
         super().__init__(config)
         self.steps = 0
+        self.inds = block_indices(config.d_features)
         
         # TODO: Make this more flexible
         layer = model.model.layers[config.layer]

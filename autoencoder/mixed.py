@@ -2,12 +2,10 @@ import torch
 
 from torch import nn
 from torch.optim.lr_scheduler import LinearLR
-from einops import einsum
 from quimb.tensor import Tensor
 
 from utils import Muon
-from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
-
+from autoencoder.base import Autoencoder, Config, hoyer_density, masked_mean, blocked_inner
 
 class Mixed(Autoencoder, kind="mixed"):
     """A tensor-based autoencoder class which mixes its features."""
@@ -34,9 +32,6 @@ class Mixed(Autoencoder, kind="mixed"):
              & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
     
-    def kernel(self):
-        return self.down @ ((self.left @ self.left.T) * (self.right @ self.right.T)) @ self.down.T
-    
     def features(self, acts):
         return nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right)
     
@@ -45,20 +40,18 @@ class Mixed(Autoencoder, kind="mixed"):
         # Compute the features and hidden representation
         f = self.features(acts)
         h = nn.functional.linear(f, self.down)
+        g = nn.functional.linear(h, self.down.T)
         
         # Compute the regularisation term
-        sparsity = hoyer(f).mean()
-        reg = 1.0 - alpha * sparsity 
+        density = hoyer_density(f).mean()
         
         # Compute the self and cross terms of the loss
-        recons = einsum(h, h, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
+        recons = blocked_inner(g, self.left, self.right, self.inds)
         cross = h.square().sum(-1)
         
         # Compute the reconstruction and the loss
         error = masked_mean(recons - 2 * cross + 1.0, mask)
-        loss = masked_mean(recons * reg - 2 * cross * reg + 1.0, mask)
-
-        return loss, f, dict(mse=error, reg=sparsity)
+        return error + alpha * density, f, dict(mse=error, reg=density)
     
     def optimizers(self, max_steps, lr=0.03):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, nesterov=False)

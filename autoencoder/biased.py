@@ -6,7 +6,7 @@ from einops import einsum
 from quimb.tensor import Tensor
 
 from utils import Muon
-from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
+from autoencoder.base import Autoencoder, Config, hoyer_density, masked_mean
 
 class Biased(Autoencoder, kind="biased"):
     """A tensor-based autoencoder class which mixes its features."""
@@ -43,21 +43,22 @@ class Biased(Autoencoder, kind="biased"):
 
     @torch.compile(fullgraph=True)
     def loss(self, acts, mask, alpha):
-        f = self.features(acts)
+        # f = self.features(acts)
         
-        # Compute the regularisation term
-        sparsity = hoyer(f).mean()
-        reg = 1.0 - alpha * sparsity
+        # # Compute the regularisation term
+        # density = hoyer_density(f).mean()
+        # reg = 1.0 - alpha * sparsity
         
-        # Compute the self and cross terms of the loss
-        recons = einsum(f, f, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
-        cross = f.square().sum(-1)
+        # # Compute the self and cross terms of the loss
+        # recons = einsum(f, f, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
+        # cross = f.square().sum(-1)
 
-        # Compute the reconstruction and the loss
-        error = masked_mean(recons - 2 * cross + 4.0, mask) / 4.0
-        loss = masked_mean(recons * reg - 2 * cross * reg + 4.0, mask) / 4.0
+        # # Compute the reconstruction and the loss
+        # error = masked_mean(recons - 2 * cross + 4.0, mask) / 4.0
+        # loss = masked_mean(recons * reg - 2 * cross * reg + 4.0, mask) / 4.0
 
-        return loss, f, dict(mse=error, reg=sparsity)
+        # return loss, f, dict(mse=error, reg=sparsity)
+        pass
 
     def optimizers(self, max_steps, lr=0.03):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, nesterov=False)

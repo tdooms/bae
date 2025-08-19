@@ -2,11 +2,10 @@ import torch
 
 from torch import nn
 from torch.optim.lr_scheduler import LinearLR
-from einops import einsum
 from quimb.tensor import Tensor
 
 from utils import Muon
-from autoencoder.base import Autoencoder, Config, hoyer, masked_mean, block_indices
+from autoencoder.base import Autoencoder, Config, hoyer_density, masked_mean, blocked_inner
 
 class Vanilla(Autoencoder, kind="vanilla"):
     """A tensor-based autoencoder class which mixes its features."""
@@ -18,15 +17,10 @@ class Vanilla(Autoencoder, kind="vanilla"):
         
         torch.nn.init.orthogonal_(self.left.data)
         torch.nn.init.orthogonal_(self.right.data)
-        
-        self.inds = block_indices(config.d_features)
 
     @staticmethod
     def from_config(model, **kwargs):
         return Vanilla(model, Config(kind="vanilla", **kwargs))
-    
-    def kernel(self):
-        return (self.left @ self.left.T) * (self.right @ self.right.T)
 
     def network(self, mod='inp'):
         u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
@@ -34,12 +28,6 @@ class Vanilla(Autoencoder, kind="vanilla"):
         return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', 'i:0'], tags=['U']) \
              & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', 'i:1'], tags=['U']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
-    
-    def inner(self, f):
-        """Efficient evalation of the kernelised inner product."""
-        pattern = "...h, hl, hr, ...k, kl, kr -> ..."
-        sub = lambda s, e: (f[..., s:e], self.left[s:e], self.right[s:e])
-        return sum((2 if s1 != s2 else 1) * torch.einsum(pattern, *sub(s1, e1), *sub(s2, e2)) for s1, e1, s2, e2 in self.inds)
 
     def features(self, acts):
         return nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right)
@@ -47,21 +35,13 @@ class Vanilla(Autoencoder, kind="vanilla"):
     @torch.compile(fullgraph=True)
     def loss(self, acts, mask, alpha):
         f = self.features(acts)
-        
-        # Compute the regularisation term
-        sparsity = hoyer(f).mean()
-        reg = 1.0 - alpha * sparsity
-        
-        # Compute the self and cross terms of the loss
-        # recons = einsum(f, f, self.kernel(), "... h1, ... h2, h1 h2 -> ...")
-        recons = self.inner(f)
+        density = hoyer_density(f).mean()
+
+        recons = blocked_inner(f, self.left, self.right, self.inds)
         cross = f.square().sum(-1)
 
-        # Compute the reconstruction and the loss
         error = masked_mean(recons - 2 * cross + 1.0, mask)
-        loss = masked_mean(recons * reg - 2 * cross * reg + 1.0, mask)
-
-        return loss, f, dict(mse=error, reg=sparsity)
+        return error + alpha * density, f, dict(mse=error, reg=density)
 
     def optimizers(self, max_steps, lr=0.03):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, nesterov=False)

@@ -6,15 +6,15 @@ from einops import einsum
 from quimb.tensor import Tensor
 
 from utils import Muon
-from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
+from autoencoder.base import Autoencoder, Config, hoyer_density, masked_mean, blocked_masked_inner, blocked_inner
 
 class Ordered(Autoencoder, kind="ordered"):
     """A tensor-based autoencoder class which mixes its features."""
     def __init__(self, model, config) -> None:
         super().__init__(model, config)
         
-        self.triu = nn.Buffer(torch.triu(torch.ones(config.d_features, config.d_features)), persistent=False)
-        self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1), persistent=False)
+        self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1, dtype=torch.float).flip(0), persistent=False)
+        self.htail = nn.Buffer(self.counts.reciprocal().cumsum(0).flip(0), persistent=False)
 
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
@@ -26,9 +26,6 @@ class Ordered(Autoencoder, kind="ordered"):
     def from_config(model, **kwargs):
         return Ordered(model, Config(kind="ordered", **kwargs))
 
-    def kernel(self):
-        return (self.left @ self.left.T) * (self.right @ self.right.T)
-    
     def features(self, acts):
         return einsum(self.left, acts, "feat inp, ... inp -> ... feat") * einsum(self.right, acts, "feat inp, ... inp -> ... feat")
     
@@ -39,29 +36,25 @@ class Ordered(Autoencoder, kind="ordered"):
              & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
     
+    @torch.compile(fullgraph=True)
     def loss(self, acts, mask, alpha):
         f = self.features(acts)
         
-        # Compute the regularisation term
-        sparsity = hoyer(f)
-        reg = (1 - alpha * (sparsity.cumsum(dim=0) / self.counts)) / self.config.d_features
-        
-        # Compute the reconstruction and the ordering kernels
-        kernel = self.kernel()
-        order = einsum(self.triu, reg, self.triu, "f1 reg, reg, f2 reg -> f1 f2")
+        # Compute the regularisation term (mean of average prefix sum, phew)
+        density = hoyer_density(f)
+        reg = (density * self.htail).mean()
         
         # Compute the self and cross terms of the loss and combine them
-        # NOTE: one could cumsum reg, but it's slower than the matmul for some reason
-        recons = einsum(f, f, kernel * order, "... f1, ... f2, f1 f2 -> ...")
-        cross = einsum(f, f, self.triu, reg, "... f, ... f, f reg, reg -> ...")
-        loss = masked_mean(recons - 2 * cross + 1.0, mask)
+        recons = blocked_masked_inner(f, self.left, self.right, self.inds)
+        cross = (f.square() * self.counts).mean(-1)
+        loss = masked_mean(recons - 2 * cross + 1.0, mask) + alpha * reg
         
         # Compute the reconstruction error without the regularisation
         with torch.no_grad():
-            recons = einsum(f, f, kernel, "... f1, ... f2, f1 f2 -> ...")
+            recons = blocked_inner(f, self.left, self.right, self.inds)
             error = masked_mean(recons - 2 * f.pow(2).sum(-1) + 1.0, mask)
         
-        return loss, f, dict(mse=error, reg=sparsity.mean())
+        return loss, f, dict(mse=error, reg=density.mean())
     
     def optimizers(self, max_steps, lr=0.03):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, nesterov=False)

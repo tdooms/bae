@@ -2,13 +2,13 @@ from itertools import product
 from torch import Tensor
 from jaxtyping import Float
 
-def inv_hoyer(x: Float[Tensor, "... x"], dim: int = -1):
-    """Computes 1 - Hoyer's sparsity measure along a specified dim."""
+def hoyer_density(x: Float[Tensor, "... x"], dim: int = -1):
+    """Computes Hoyer's density measure (1=dense, 0=sparse) along a specified dim."""
     size = x.size(dim) if isinstance(dim, int) else product(x.size(d) for d in dim)
     return (x.norm(p=1, dim=dim) / x.norm(p=2, dim=dim) - 1.0) / (size**0.5 - 1.0)
 
-def hoyer(x: Float[Tensor, "... x"], dim: int = -1):
-    """Computes Hoyer's sparsity measure along a specified dim."""
+def hoyer_sparsity(x: Float[Tensor, "... x"], dim: int = -1):
+    """Computes Hoyer's sparsity measure (0=dense, 1=sparse) along a specified dim."""
     size = x.size(dim) if isinstance(dim, int) else product(x.size(d) for d in dim)
     return ((size**0.5 - 1.0) - (x.norm(p=1, dim=dim) / x.norm(p=2, dim=dim))) / (size**0.5 - 1.0)
 

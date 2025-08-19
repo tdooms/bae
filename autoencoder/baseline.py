@@ -4,7 +4,7 @@ from torch import nn
 from torch.optim.lr_scheduler import LinearLR
 from utils import Muon
 
-from autoencoder.base import Autoencoder, Config, hoyer, masked_mean
+from autoencoder.base import Autoencoder, Config, hoyer_density, masked_mean
 
 class TopK(nn.Module):
     """A module that selects the top-k features from the input."""
@@ -49,11 +49,11 @@ class Baseline(Autoencoder, kind="baseline"):
     def loss(self, acts, mask, _):
         f = self.features(acts)
         recons = nn.functional.linear(f, self.decoder)
-
-        sparsity = hoyer(f).mean()
+        
+        density = hoyer_density(f).mean()
         
         error = masked_mean((recons - acts).pow(2).sum(dim=-1), mask)
-        return error, f, dict(mse=error, reg=sparsity)
+        return error, f, dict(mse=error, reg=density)
 
     def optimizers(self, max_steps, lr=0.03):
         optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, nesterov=False)
