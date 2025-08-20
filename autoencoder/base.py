@@ -187,7 +187,7 @@ class Autoencoder(PreTrainedModel):
             acts = acts * acts.square().sum(-1, keepdim=True).rsqrt()
 
         if self.training:
-            self.steps += 0.5 # Gradient accumulation steps are 2, so we increment by 0.5, which is ugly
+            self.steps += 1.0
             alpha = self.config.alpha * min(1.0, self.steps / self.config.warmup)
             
             loss, features, metrics = self.loss(acts, attention_mask, alpha)

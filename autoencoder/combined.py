@@ -59,7 +59,7 @@ class Combined(Autoencoder, kind="combined"):
         reg = (density * self.htail).mean()
         
         # Compute the reconstruction, ordering and importance kernels
-        recons = blocked_inner(g, self.left, self.right, self.inds)
+        recons = blocked_masked_inner(g, self.left, self.right, self.inds)
         cross = (f * g * self.counts).mean(-1)
         loss = masked_mean(recons - 2 * cross + 1.0, mask) + alpha * reg
         
