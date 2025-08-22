@@ -35,7 +35,7 @@ batch = {k: v.cuda() for k, v in batch.items() if isinstance(v, torch.Tensor)}
 def incremental(_coder):
     features = _coder(**batch)['features'].half()
     
-    kernel = _coder.kernel()
+    kernel = (_coder.left @ _coder.left.T) * (_coder.right @ _coder.right.T)
     mask = torch.zeros_like(kernel[0])
 
     recons = []
@@ -47,11 +47,11 @@ def incremental(_coder):
     return pd.DataFrame({'x': x, 'recons': recons, 'kind': [coder.config.kind] * len(recons)})
 
 # Get reconstructions for ordered coder
-coder = Autoencoder.load(model, "ordered", layer=18, expansion=16, alpha=0.1, tags=[], root="//wsl.localhost/Ubuntu/home/thomas/bae/weights").eval().half()
+coder = Autoencoder.load(model, "ordered", layer=18, expansion=16, alpha=0.1, tags=[], hf=True).eval().half()
 ordered = incremental(coder)
 
 # Get reconstructions for vanilla coder
-coder = Autoencoder.load(model, "vanilla", layer=18, expansion=16, alpha=0.1, tags=[], root="//wsl.localhost/Ubuntu/home/thomas/bae/weights").eval().half()
+coder = Autoencoder.load(model, "vanilla", layer=18, expansion=16, alpha=0.1, tags=[], hf=True).eval().half()
 vanilla = incremental(coder)
 
 # Reorder vanilla reconstructions by largest increases
@@ -83,5 +83,5 @@ fig.update_yaxes(title_text="<b>Reconstruction error</b>", range=(0, 0.805))
 fig.update_layout(showlegend=True, legend=dict(title="", orientation="h", x=0.5, xanchor="center", y=1.02, yanchor="bottom"))
 fig.update_traces(line=dict(width=3))
 # %%
-fig.write_image("C:/Users/thoma/Downloads/ordered-recons.svg")
+fig.write_image("C:/Users/thoma/Downloads/ordered-recons.pdf")
 # %%

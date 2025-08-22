@@ -5,16 +5,12 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset, load_dataset
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 from autoencoder import Autoencoder
-from utils.functions import inv_hoyer
 from figures.constants import FONT
 
-import pandas as pd
 import plotly.express as px
 import torch
-import numpy as np
 # %%
 torch.set_grad_enabled(False)
 name = "Qwen/Qwen3-0.6B-Base"
@@ -40,4 +36,6 @@ acts = torch.cat(acts, dim=0)
 fig = px.histogram(acts[..., 0].flatten().cpu().neg(), template="plotly_white", log_y=True, width=600, height=300)
 fig.update_layout(showlegend=False, font=FONT, margin=dict(l=10, r=10, t=10, b=10))
 fig.update_xaxes(title_text="Activation Value").update_yaxes(title_text="Count")
+# %%
+fig.write_image("C:/Users/thoma/Downloads/distribution.pdf")
 # %%

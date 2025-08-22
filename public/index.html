@@ -40,6 +40,27 @@
     });
     
     document.body.appendChild(dropdown);
+    // Create info box
+    const infoBox = document.createElement('div');
+    infoBox.style.position = 'absolute';
+    infoBox.style.top = '10px';
+    infoBox.style.right = '10px';
+    infoBox.style.zIndex = '1000';
+    infoBox.style.padding = '10px';
+    infoBox.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+    infoBox.style.border = '1px solid #ccc';
+    infoBox.style.borderRadius = '5px';
+    infoBox.style.fontSize = '12px';
+    infoBox.style.maxWidth = '350px';
+    infoBox.innerHTML = `
+      <strong>Position:</strong> Linear projection of activations into 3D subspace<br>
+      <strong>Color:</strong> Activation strength of the studied bilinear form<br>
+      <strong>Label:</strong> Current token -> predicted token<br>
+      <br>
+      There may be 'illusory' gaps around the origin since visualisation omits points with very low activation strength.
+    `;
+
+    document.body.appendChild(infoBox);
     
     let CSV_URL = CSV_FILES[0].url;
     
@@ -62,7 +83,7 @@
       }
       
       const update = { x: [x], y: [y], z: [z], 'marker.color': [c], text: [text] };
-      Plotly.restyle('chart', update);
+      Plotly.restyle('chart', update, [0]);
     }
 
     async function loadCSV(url) {
@@ -92,6 +113,13 @@
         }
     `;
     document.head.appendChild(hoverStyle);
+    const origin = {
+      type: 'scatter3d',
+      mode: 'markers',
+      x: [0], y: [0], z: [0],
+      hovertemplate: 'Origin<extra></extra>',
+      marker: { size: 18, color: '#282828' }
+    };
     const trace = {
       type: 'scatter3d',
       mode: 'markers',
@@ -126,7 +154,7 @@
       };
     const config = { displayModeBar: false };
 
-      Plotly.newPlot('chart', [trace], layout, config);
+      Plotly.newPlot('chart', [trace, origin], layout, config);
     })().catch(err => {
       document.body.innerHTML = `<pre style="color:#b00; padding:1rem;">${err}</pre>`;
       console.error(err);

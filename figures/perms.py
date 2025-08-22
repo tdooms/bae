@@ -51,12 +51,3 @@ fig.show()
 # %%
 fig.write_image("C:/Users/thoma/Downloads/permutation.svg")
 # %%
-
-fig = px.imshow(sims.cpu(), color_continuous_scale='RdBu', color_continuous_midpoint=0.5, height=400, width=600)
-fig.update_xaxes(showticklabels=False).update_yaxes(showticklabels=False)
-fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=22, b=10), font=FONT)
-fig.show()
-# %%
-# tn = (coders[0].network('a') | coders[0].network('b'))
-# matrix = tn.contract(all, output_inds=['f:a', 'f:b']).data / 20
-# px.imshow(matrix[:256, :256].cpu())

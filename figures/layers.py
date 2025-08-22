@@ -46,4 +46,5 @@ fig.update_yaxes(title="<b>Reconstruction error</b>")
 fig.update_layout(font=FONT, margin=dict(l=10, r=10, t=10, b=10))
 fig.update_layout(showlegend=True, legend=dict(title="", orientation="h", x=0.5, xanchor="center", y=1.02, yanchor="bottom"))
 # %%
-fig.write_image("C:/Users/thoma/Downloads/layer-recons.svg")
+fig.write_image("C:/Users/thoma/Downloads/layer-recons.pdf")
+# %%
