@@ -3,6 +3,7 @@
 /_logs
 /uv.lock
 /weights
+/wandb
 
 __pycache__/
 *.pyc

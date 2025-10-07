@@ -7,7 +7,11 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset, load_dataset
 from einops import einsum
 
+<<<<<<< HEAD
 from utils.maxact import MaxAct
+=======
+from utils.old import Feature
+>>>>>>> 1299119 (uhoh)
 from utils.manifold import Manifold
 from utils.functions import *
 from autoencoders import Autoencoder

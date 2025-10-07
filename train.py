@@ -3,72 +3,65 @@
 %autoreload 2
 
 from itertools import product
-from transformers import TrainingArguments, Trainer, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 from autoencoders import Autoencoder
+from torch.optim.lr_scheduler import LinearLR
+from tqdm import tqdm
+
+from autoencoder.utils import Hooked, Input, Muon, BatchSampler
 
 import torch
 import wandb
-import os
 
 from torch.backends import opt_einsum
 opt_einsum.strategy = "auto-hq"
 # %%
-name = "Qwen/Qwen3-0.6B-Base"
+model_name = "Qwen/Qwen3-0.6B-Base"
 # name = "Qwen/Qwen3-1.7B-Base"
 # name = "google/gemma-3-270m"
 
-tokenizer = AutoTokenizer.from_pretrained(name)
+tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenize = lambda dataset: tokenizer(dataset["text"], truncation=True, padding=True, max_length=256)
 
-model = AutoModelForCausalLM.from_pretrained(name, torch_dtype="auto", device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto", device_map="auto")
 model = torch.compile(model)
 
-train = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
-train = train.map(tokenize, batched=True)
+dataset = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True).with_format("torch")
+dataset = dataset.map(tokenize, batched=True)
 # %%
-# for i, k in product([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], ["vanilla", "ordered", "mixed", "combined"]):
-for i, k in product([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], ["combined"]):
-    coder = Autoencoder.from_config(model, k, layer=18, expansion=16, alpha=i, bottleneck=2, tags=['v2'])
-    project = "coder"
-    # project = None
+max_steps = 2**10
 
-    args = TrainingArguments(
-        seed=0,
-        output_dir="_checkpoints",  
-        logging_steps=10,
-        save_total_limit=5,
-        save_steps=512,
-        per_device_train_batch_size=32,
-        do_eval=False,
-        report_to="wandb" if project else "none",
-        remove_unused_columns=True,
-        bf16=True,
-        gradient_accumulation_steps=1,
-        max_steps=2**10,
-        max_grad_norm=1000,
-        run_name=f"{model.name_or_path.split('/')[-1]}-{coder.config.name}",
-    )
+params = dict(d_model=model.config.hidden_size, layer=18, expansion=16, alpha=0.3, tags=['test'])
+autoencoder = Autoencoder.from_config("vanilla", **params).cuda().type(torch.bfloat16)
 
-    trainer = Trainer(
-        model=coder,
-        optimizers=coder.optimizers(args.max_steps),
-        args=args,
-        train_dataset=train,
-        processing_class=tokenizer,
-    )
+optimizer = Muon(list(autoencoder.parameters()), lr=0.03, weight_decay=0, nesterov=True, momentum=0.95)
+scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.0, total_iters=max_steps)
 
-    os.environ["WANDB_PROJECT"] = project or ""
-    os.environ["WANDB_DIR"] = "_logs"
-    os.environ["WANDB_CONSOLE"] = "wrap"
+hooked = Hooked(model, Input(model.model.layers[autoencoder.config.layer]))
+progress = tqdm(zip(range(max_steps), BatchSampler(hooked, dataset)), total=max_steps)
 
-    trainer.train()
-    coder.save()
+name = model_name.lower().split('/')[-1] + '-' + autoencoder.config.name
+# run = wandb.init(project="coder", name=name, config=autoencoder.config)
+
+for step, (acts, batch) in progress:
+    scale = torch.tensor(min(1.0, step / 256))
+    loss, metrics = autoencoder.loss_fn(acts, batch['attention_mask'], scale)
+
+    metrics['train/scale'] = scale.item()
+    metrics['train/loss'] = loss.item()
+    metrics['train/learning_rate'] = scheduler.get_last_lr()[0]
+    metrics['train/grad_norm'] = torch.nn.utils.get_total_norm(autoencoder.parameters())
+    metrics['train/weight_norm'] = torch.nn.utils.get_total_norm([p.data for p in autoencoder.parameters()])
+
+    progress.set_description(f"loss = {float(loss):.3f}")
+    # run.log(metrics, step=step, commit=True)
     
-    wandb.run.tags = ['sparsity-sweep']
-    wandb.finish()
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    scheduler.step()
+# run.finish()
 # %%
-import gc
-gc.collect()
-torch.cuda.empty_cache()
+autoencoder.save(model_name)
 # %%

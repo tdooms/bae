@@ -1,4 +1,5 @@
 from collections import defaultdict
+import torch
 
 class Input:
     def __init__(self, inner):
@@ -10,6 +11,31 @@ class Output:
 
 class Hooked:
     """A simple combination of NNSight and TransformerLens since I didn't want either as dependency."""
+    def __init__(self, model, module):
+        self.device = model.device
+        self.dtype = model.dtype
+        self.model = model
+        self.module = module
+    
+    def hook(self, module):
+        kind = 'input' if isinstance(module, Input) else 'output'
+        
+        def cache(_module, input, output):
+            self.activations = dict(input=input[0], output=output)[kind]
+        
+        return module.inner.register_forward_hook(cache)
+        
+    def __call__(self, *args, **kwargs):
+        handle = self.hook(self.module)
+        _ = self.model(*args, **kwargs)
+        _ = handle.remove()
+        
+        acts = self.activations
+        self.activations = None
+        return acts
+    
+class MultiHooked:
+    """A simple combination of NNSight and TransformerLens since I didn't want either as dependency."""
     def __init__(self, model, *args, **kwargs):
         self.device = model.device
         self.dtype = model.dtype
@@ -19,6 +45,7 @@ class Hooked:
     
     def hook(self, name, module):
         kind = 'input' if isinstance(module, Input) else 'output'
+        
         def cache(_module, input, output):
             self.activations[name] = dict(input=input[0], output=output)[kind]
             
@@ -26,9 +53,9 @@ class Hooked:
         
     def __call__(self, *args, **kwargs):
         handles = [self.hook(name, module) for name, module in self.modules.items()]
-        logits = self.model(*args, **kwargs)
+        _ = self.model(*args, **kwargs)
         _ = [handle.remove() for handle in handles]
         
         cache = self.activations
         self.activations = defaultdict()
-        return logits, cache
+        return cache
