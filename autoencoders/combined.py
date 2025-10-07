@@ -5,7 +5,7 @@ from torch.optim.lr_scheduler import LinearLR
 from quimb.tensor import Tensor
 
 from utils import Muon
-from autoencoder.base import Autoencoder, Config, hoyer_density, masked_mean, blocked_inner, blocked_masked_inner
+from autoencoders.base import Autoencoder, Config, hoyer_density, masked_mean, blocked_inner, blocked_masked_inner
 
 class Combined(Autoencoder, kind="combined"):
     """A tensor-based autoencoder class which mixes its features."""

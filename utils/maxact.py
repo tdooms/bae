@@ -19,7 +19,7 @@ def create_black_diverging_cmap():
     rgb_colors = [x[1] for x in colors]
     return LinearSegmentedColormap.from_list('black_diverging', list(zip(positions, rgb_colors)))
 
-class Feature:
+class MaxAct:
     def __init__(self, model, tokenizer, dataset, acts=None, **kwargs):
         self.model = model
         self.tokenizer = tokenizer
@@ -48,7 +48,7 @@ class Feature:
     
     @staticmethod
     def color_line(line, colors, start, end):
-        return "".join([Feature.color_str(line[i], colors[i]) for i in range(start, end)]).replace('Ġ', '')
+        return "".join([MaxAct.color_str(line[i], colors[i]) for i in range(start, end)]).replace('Ġ', '')
 
     def color_inputs(self, batch, feature, view=range(-10, 10), dark=True, largest=True):
         features = self.model(**batch)['features']
@@ -63,7 +63,7 @@ class Feature:
             vals, inds = value.topk(k=1, dim=-1, largest=largest)
             start, end = max(0, inds.item() + view.start), min(len(color), len(line), inds.item() + view.stop)
 
-            print(f"{vals.item():<4.2f}:  {Feature.color_line(line, color, start, end)}")
+            print(f"{vals.item():<4.2f}:  {MaxAct.color_line(line, color, start, end)}")
         print()
     def __call__(self, *args, k=3, **kwargs):
         assert k <= 100, "Amount must be less than or equal to 100"

@@ -1,4 +1,3 @@
-from einops import *
 from collections import defaultdict
 
 class Input:

@@ -6,7 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset, load_dataset
 from torch.utils.data import DataLoader
 
-from autoencoder import Autoencoder
+from autoencoders import Autoencoder
 from figures.constants import FONT
 
 import plotly.express as px

@@ -8,7 +8,7 @@ import torch
 from tqdm import tqdm
 from itertools import product
 from tqdm import tqdm
-from autoencoder import Autoencoder, Placeholder
+from autoencoders import Autoencoder, Placeholder
 from figures.constants import FONT
 
 # %%

@@ -4,7 +4,7 @@
 
 from transformers import TrainingArguments, Trainer, AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
-from autoencoder import Autoencoder
+from autoencoders import Autoencoder
 
 import torch
 import wandb

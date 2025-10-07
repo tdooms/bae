@@ -4,7 +4,7 @@ from torch import nn
 from torch.optim.lr_scheduler import LinearLR
 from utils import Muon
 
-from autoencoder.base import Autoencoder, Config, hoyer_density, masked_mean
+from autoencoders.base import Autoencoder, Config, hoyer_density, masked_mean
 
 class TopK(nn.Module):
     """A module that selects the top-k features from the input."""

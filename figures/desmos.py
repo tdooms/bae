@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 
 # --- parameters ---
 k = 0.95          # choose any 0 < k < 1
-n = 64           # grid resolution (increase for smoother surface)
+n = 128           # grid resolution (increase for smoother surface)
 lims = 1.5        # plot range in each axis
 
 # --- grid + field ---
@@ -41,13 +41,14 @@ fig.add_trace(go.Isosurface(
     caps=dict(x_show=True, y_show=True, z_show=True)
 ))
 
-fig.update_layout(scene=dict(aspectmode="data"), width=600, height=600, margin=dict(l=0, r=0, b=0, t=0))
+fig.update_layout(scene=dict(aspectmode="data"), width=600, height=500, margin=dict(l=0, r=0, b=0, t=0))
 fig.update_layout(scene=dict(xaxis_visible=False, yaxis_visible=False, zaxis_visible=False))
 fig.update_traces(showscale=False)
-fig.update_layout(scene_camera=dict(eye=dict(x=1.2, y=1.2, z=0.8)))
+fig.update_layout(scene_camera=dict(eye=dict(x=1.1, y=1.1, z=0.7)))
 fig.show()
 # %%
-
+fig.write_image("C:/Users/thoma/Downloads/circles.pdf")
+# %%
 import torch
 import plotly.graph_objects as go
 
@@ -101,4 +102,6 @@ fig.update_xaxes(visible=False, constrain="domain", scaleanchor="y", scaleratio=
 fig.update_yaxes(visible=False)
 
 fig.show()
+# %%
+fig.write_image("C:/Users/thoma/Downloads/superposition.pdf")
 # %%

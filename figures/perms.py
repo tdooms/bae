@@ -11,7 +11,7 @@ from tqdm import tqdm
 from scipy.optimize import linear_sum_assignment
 from figures.constants import FONT
 
-from autoencoder import Autoencoder, Placeholder
+from autoencoders import Autoencoder, Placeholder
 from utils.functions import hoyer
 from itertools import combinations_with_replacement
 

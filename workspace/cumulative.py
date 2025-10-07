@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from einops import einsum
 
-from autoencoder import Autoencoder
+from autoencoders import Autoencoder
 from figures.constants import FONT, COLORS
 
 import pandas as pd

@@ -5,8 +5,8 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset, load_dataset
 
-from utils import Feature
-from autoencoder import Autoencoder
+from utils import MaxAct
+from autoencoders import Autoencoder
 
 import torch
 # %%
@@ -26,7 +26,7 @@ coder = Autoencoder.load(model, "ordered", layer=12, expansion=16, alpha=0.1, ta
 # coder = Autoencoder.load(model, "biased", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
 # coder = Autoencoder.load(model, "mani", layer=18, expansion=16, alpha=1.0, tags=[]).eval().half()
 # %%
-vis = Feature(coder, tokenizer, dataset, max_steps=2**5, batch_size=2**5)
+vis = MaxAct(coder, tokenizer, dataset, max_steps=2**5, batch_size=2**5)
 # %%
 vis(list(range(9000, 9010)), dark=True, k=5)
 # %%

@@ -7,7 +7,7 @@ from datasets import Dataset, load_dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from autoencoder import Autoencoder
+from autoencoders import Autoencoder
 from utils.functions import inv_hoyer
 from figures.constants import FONT
 

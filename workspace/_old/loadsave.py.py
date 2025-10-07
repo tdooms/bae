@@ -3,7 +3,7 @@
 %autoreload 2
 
 from tqdm import tqdm
-from autoencoder import Autoencoder, Placeholder, Config
+from autoencoders import Autoencoder, Placeholder, Config
 import plotly.express as px
 import torch
 from safetensors.torch import save_file, load_file, load_model, save_model

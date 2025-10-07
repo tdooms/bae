@@ -5,8 +5,8 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset, load_dataset
 
-from utils import Feature
-from autoencoder import Autoencoder
+from utils import MaxAct
+from autoencoders import Autoencoder
 
 import torch
 import plotly.express as px
