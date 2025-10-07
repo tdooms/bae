@@ -1,45 +1,30 @@
-from torch.utils.data import DataLoader
+from utils.hook import Input, Lazy, Hooked
 from tqdm import tqdm
-from matplotlib import pyplot
-from matplotlib.colors import LinearSegmentedColormap
 import torch
 
-def create_black_diverging_cmap():
-    colors = [
-        (0.0,  (0.0, 0.0, 0.7)),    # Dark blue
-        (0.25, (0.0, 0.4, 1.0)),    # Medium blue
-        (0.45, (0.2, 0.2, 0.2)),    # Near-black
-        (0.5,  (0.0, 0.0, 0.0)),    # Pure black
-        (0.55, (0.2, 0.2, 0.2)),    # Near-black
-        (0.75, (1.0, 0.4, 0.0)),    # Medium red
-        (1.0,  (0.7, 0.0, 0.0))     # Dark red
-    ]
+def to_black_diverging_color(values):
+    """Simple red-black-blue color map."""
+    r = torch.where(values < 0.5, 0.0, (values - 0.5) * 2.0)
+    g = torch.zeros_like(values)
+    b = torch.where(values > 0.5, 0.0, (0.5 - values) * 2.0)
     
-    positions = [x[0] for x in colors]
-    rgb_colors = [x[1] for x in colors]
-    return LinearSegmentedColormap.from_list('black_diverging', list(zip(positions, rgb_colors)))
+    return (torch.stack([r, g, b], dim=-1) * 255).int()
 
 class MaxAct:
-    def __init__(self, model, tokenizer, dataset, acts=None, **kwargs):
-        self.model = model
+    def __init__(self, model, autoencoder, dataset, tokenizer, batches=16, batch_size=32):
+        hooked = Hooked(model, Input(model.model.layers[autoencoder.config.layer]))
+        self.lazy = Lazy(lambda **batch: autoencoder(hooked(**batch)), dataset, device=model.device)
         self.tokenizer = tokenizer
-        self.dataset = dataset
-        self.acts = acts if acts is not None else self.max_activations(**kwargs)
-    
-    def max_activations(self, batch_size=32, max_steps=2**6, k=500):
-        loader = DataLoader(self.dataset, batch_size=batch_size, shuffle=False)
-        maxima, minima = [], []
         
-        for batch, _ in tqdm(zip(loader, range(max_steps)), total=max_steps):
-            batch = {k: v.to(self.model.device) for k, v in batch.items() if k in ['input_ids', 'attention_mask']}
-            acts = self.model(**batch)['features']
-            maxima.append(acts.max(1).values)
-            minima.append(acts.min(1).values)
+        iterator = map(lambda i: self.lazy[i*batch_size:(i+1)*batch_size][0], range(batches))
+        extrema = torch.cat([torch.stack([f.max(-2).values, f.min(-2).values], dim=-1) for f in tqdm(iterator, total=batches)], dim=0)
+        maxima, minima = extrema.unbind(-1)
+
+        _, max_inds = maxima.topk(dim=0, k=100)
+        _, min_inds = minima.topk(dim=0, k=100, largest=False)
         
-        maxima = torch.cat(maxima, dim=0).topk(dim=0, k=k).indices
-        minima = torch.cat(minima, dim=0).topk(dim=0, k=k, largest=False).indices
-        return dict(max=maxima, min=minima)
-    
+        self.acts = dict(max=max_inds.cpu(), min=min_inds.cpu())
+        
     @staticmethod
     def color_str(str, color):
         r, g, b = color
@@ -50,14 +35,13 @@ class MaxAct:
     def color_line(line, colors, start, end):
         return "".join([MaxAct.color_str(line[i], colors[i]) for i in range(start, end)]).replace('Ġ', '')
 
-    def color_inputs(self, batch, feature, view=range(-10, 10), dark=True, largest=True):
-        features = self.model(**batch)['features']
+    def color_inputs(self, inds, feature, view=range(-10, 10), dark=True, largest=True):
+        features, batch = self.lazy[inds]
         values = features[..., feature]
         tokens = [self.tokenizer.convert_ids_to_tokens(ids) for ids in batch['input_ids']]
-        normalized = -(values / values.abs().max()) / 2.0 + 0.5
         
-        colors = create_black_diverging_cmap()(normalized.cpu())[..., :3] if dark else pyplot.cm.bwr(normalized.cpu())[..., :3]
-        colors = (colors * 255).astype(int)
+        normalized = -(values / values.abs().max()) / 2.0 + 0.5
+        colors = to_black_diverging_color(normalized.cpu())
         
         for line, color, value in zip(tokens, colors, values):
             vals, inds = value.topk(k=1, dim=-1, largest=largest)
@@ -65,6 +49,7 @@ class MaxAct:
 
             print(f"{vals.item():<4.2f}:  {MaxAct.color_line(line, color, start, end)}")
         print()
+    
     def __call__(self, *args, k=3, **kwargs):
         assert k <= 100, "Amount must be less than or equal to 100"
         
@@ -74,10 +59,8 @@ class MaxAct:
         for feature in args:
             print(f"Feature {feature}:")
             indices = self.acts["max"][:, feature][:k].cpu()
-            batch = {key: self.dataset[key][indices].cuda() for key in ['input_ids', 'attention_mask']}
-            self.color_inputs(batch, feature, largest=True, **kwargs)
+            self.color_inputs(indices, feature, largest=True, **kwargs)
             
             indices = self.acts["min"][:, feature][:k].cpu()
-            batch = {key: self.dataset[key][indices].cuda() for key in ['input_ids', 'attention_mask']}
-            self.color_inputs(batch, feature, largest=False, **kwargs)
+            self.color_inputs(indices, feature, largest=False, **kwargs)
             print()

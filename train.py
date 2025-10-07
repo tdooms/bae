@@ -9,7 +9,7 @@ from autoencoders import Autoencoder
 from torch.optim.lr_scheduler import LinearLR
 from tqdm import tqdm
 
-from autoencoder.utils import Hooked, Input, Muon, BatchSampler
+from autoencoders.utils import Hooked, Input, Muon, BatchSampler
 
 import torch
 import wandb
@@ -35,8 +35,8 @@ max_steps = 2**10
 params = dict(d_model=model.config.hidden_size, layer=18, expansion=16, alpha=0.3, tags=['test'])
 autoencoder = Autoencoder.from_config("vanilla", **params).cuda().type(torch.bfloat16)
 
-optimizer = Muon(list(autoencoder.parameters()), lr=0.03, weight_decay=0, nesterov=True, momentum=0.95)
-scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.0, total_iters=max_steps)
+optimizer = Muon(list(autoencoder.parameters()), lr=1.0, weight_decay=0, nesterov=True, momentum=0.95)
+scheduler = LinearLR(optimizer, start_factor=0.03, end_factor=0.0, total_iters=max_steps)
 
 hooked = Hooked(model, Input(model.model.layers[autoencoder.config.layer]))
 progress = tqdm(zip(range(max_steps), BatchSampler(hooked, dataset)), total=max_steps)

@@ -20,6 +20,7 @@ dependencies = [
     "transformers",
     "tokenizers",
     "wandb",
+    "hf_xet",
     "jupyter",
     "ipykernel",
     "numba>=0.61",

@@ -1,8 +1,4 @@
-from autoencoders.mixed import Mixed
-from autoencoders.combined import Combined
-from autoencoders.ordered import Ordered
-from autoencoders.vanilla import Vanilla
-from autoencoders.baseline import Baseline
-from autoencoders.base import Placeholder, Autoencoder, Config
+from autoencoders.base import Autoencoder, Config
+from autoencoders.v1 import *
 
 __all__ = ["Autoencoder"]
