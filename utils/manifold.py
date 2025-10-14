@@ -6,11 +6,13 @@ import pandas as pd
 import plotly.express as px
 import torch
 
+from autoencoders.utils import Input, Hooked
+
 class Manifold:
-    def __init__(self, dataset, hooked, tokenizer, form, **kwargs):
+    def __init__(self, model, autoencoder, dataset, tokenizer, form, **kwargs):
         self.eigvals, self.eigvecs = torch.linalg.eigh(form.float())
         self.dataset = dataset
-        self.hooked = hooked
+        self.hooked = Hooked(model, Input(model.model.layers[autoencoder.config.layer]))
         self.tokenizer = tokenizer
         
         self.sample(**kwargs)
@@ -21,20 +23,19 @@ class Manifold:
         fig = px.line(filtered.cpu(), template='plotly_white', width=500, height=200)
         return fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
 
-    def sample(self, batch_size=2**5, max_steps=2**3):
+    def sample(self, batch_size=2**5, batches=2**3):
         inds = self.eigvals.abs().topk(k=3, dim=-1).indices
         
         loader = DataLoader(self.dataset, batch_size=batch_size, shuffle=False)
         vals, feats, inputs, outputs = [], [], [], []
 
-        for batch, _ in tqdm(zip(loader, range(max_steps)), total=max_steps):
+        for batch, _ in tqdm(zip(loader, range(batches)), total=batches):
             batch = {k: v.to(self.hooked.device) for k, v in batch.items() if k in ['input_ids', 'attention_mask']}    
-            cache = self.hooked(**batch)
+            output, acts = self.hooked(**batch, output=True)
             
             inputs += [batch['input_ids']]
-            outputs += [cache[0].logits.argmax(dim=-1)]
+            outputs += [output.logits.argmax(dim=-1)]
             
-            acts = cache[1]['acts']
             acts = acts * acts.pow(2).sum(-1, keepdim=True).rsqrt()
             
             if self.eigvals.size(-1) == acts.size(-1) + 1:

@@ -1,19 +1,19 @@
 import torch
 
 from torch import nn
-from torch.optim.lr_scheduler import LinearLR
-from einops import einsum
+from itertools import combinations_with_replacement
 from quimb.tensor import Tensor
 
-from utils import Muon
-# from autoencoders.base import Autoencoder, Config, hoyer_density, masked_mean, blocked_masked_inner, blocked_inner
 from autoencoders.base import Autoencoder, Config
+from autoencoders.utils import tiled_masked_product, tiled_product
 
 
 class Ordered(Autoencoder, kind="ordered"):
     """A tensor-based autoencoder class which mixes its features."""
-    def __init__(self, model, config) -> None:
-        super().__init__(model, config)
+    def __init__(self, config) -> None:
+        super().__init__(config)
+        self.tiles = 4
+        self.inds = list(combinations_with_replacement(range(0, self.tiles), 2))
         
         self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1, dtype=torch.float).flip(0), persistent=False)
         self.htail = nn.Buffer(self.counts.reciprocal().cumsum(0).flip(0), persistent=False)
@@ -25,11 +25,8 @@ class Ordered(Autoencoder, kind="ordered"):
         torch.nn.init.orthogonal_(self.right.data)
     
     @staticmethod
-    def from_config(model, **kwargs):
-        return Ordered(model, Config(kind="ordered", **kwargs))
-
-    def features(self, acts):
-        return einsum(self.left, acts, "feat inp, ... inp -> ... feat") * einsum(self.right, acts, "feat inp, ... inp -> ... feat")
+    def from_config(**kwargs):
+        return Ordered(Config(kind="ordered", **kwargs))
     
     def network(self, mod='inp'):
         u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
@@ -37,28 +34,29 @@ class Ordered(Autoencoder, kind="ordered"):
         return Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:0'], tags=['U']) \
              & Tensor(u, inds=[f"s:{mod}", f'f:{mod}', f'i:1'], tags=['U']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
+
+    def forward(self, x):
+        x = x * x.square().sum(dim=-1, keepdim=True).rsqrt()
+        return nn.functional.linear(x, self.left) * nn.functional.linear(x, self.right)
     
     @torch.compile(fullgraph=True)
-    def loss(self, acts, mask, alpha):
-        f = self.features(acts)
+    def loss_fn(self, x, mask, scale):
+        features = (self(x) * mask[..., None]).flatten(0, -2)
         
         # Compute the regularisation term (mean of average prefix sum, phew)
-        density = hoyer_density(f)
-        reg = (density * self.htail).mean()
+        density = (features.norm(p=1, dim=0) / features.norm(p=2, dim=0) - 1.0).mean() / (features.size(0)**0.5 - 1.0)
+        reg = self.config.alpha * scale * (density * self.htail).mean()
         
         # Compute the self and cross terms of the loss and combine them
-        recons = blocked_masked_inner(f, self.left, self.right, self.inds)
-        cross = (f.square() * self.counts).mean(-1)
-        loss = masked_mean(recons - 2 * cross + 1.0, mask) + alpha * reg
+        recons = tiled_masked_product(features, self.left, self.right, self.tiles, self.inds)
+        cross = (features.square() * self.counts).mean(-1)
+        loss = ((recons - 2 * cross).sum() / mask.sum()) + 1.0
         
         # Compute the reconstruction error without the regularisation
+        # This is solely for logging purposes and can be removed if needed
         with torch.no_grad():
-            recons = blocked_inner(f, self.left, self.right, self.inds)
-            error = masked_mean(recons - 2 * f.pow(2).sum(-1) + 1.0, mask)
+            recons = tiled_product(features, self.left, self.right, self.tiles, self.inds)
+            cross = features.square().mean(-1)
+            error = ((recons - 2 * cross).sum() / mask.sum()) + 1.0
         
-        return loss, f, dict(mse=error, reg=density.mean())
-    
-    def optimizers(self, max_steps, lr=0.03):
-        optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, nesterov=False)
-        scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.0, total_iters=max_steps)
-        return optimizer, scheduler
+        return loss + reg, dict(mse=error, reg=density.mean())

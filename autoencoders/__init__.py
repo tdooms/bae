@@ -1,4 +1,4 @@
 from autoencoders.base import Autoencoder, Config
-from autoencoders.v1 import *
+from autoencoders.v0 import *
 
 __all__ = ["Autoencoder"]

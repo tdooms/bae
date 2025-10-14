@@ -12,7 +12,7 @@ from tqdm import tqdm
 from figures.constants import COLORS, FONT
 
 api = wandb.Api()
-runs = api.runs("tdooms/coder")
+runs = api.runs("tdooms/bae")
 # %%
 
 combined_sweep = list(islice(runs, 130-11, 130))

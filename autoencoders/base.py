@@ -84,7 +84,7 @@ class Autoencoder(nn.Module):
             shutil.rmtree(folder)
 
     @staticmethod
-    def from_pretrained(base: str, kind: str, layer: int, expansion: int, alpha: float = 0.0, beta: float = 0.0, tags=[], hf=False):
+    def load(base: str, kind: str, layer: int, expansion: int, alpha: float = 0.0, beta: float = 0.0, tags=[], hf=False):
         """Load an autoencoder from HuggingFace ``hf = True`` or local storage ``hf = False``."""
         base = base.lower().split('/')[-1]
         name = Config(kind=kind, layer=layer, expansion=expansion, alpha=alpha, beta=beta, tags=tags, d_model=0).name

@@ -7,11 +7,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset, load_dataset
 from einops import einsum
 
-<<<<<<< HEAD
 from utils.maxact import MaxAct
-=======
-from utils.old import Feature
->>>>>>> 1299119 (uhoh)
 from utils.manifold import Manifold
 from utils.functions import *
 from autoencoders import Autoencoder
@@ -30,23 +26,23 @@ dataset = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="t
 dataset = Dataset.from_list(list(dataset.take(2**12))).with_format("torch")
 dataset = dataset.map(tokenize, batched=True)
 # %%
-coder = Autoencoder.load(model, "mixed", layer=18, expansion=16, alpha=1.0).half()
-vis = MaxAct(coder, tokenizer, dataset, max_steps=2**4, batch_size=2**5)
+autoencoder = Autoencoder.load(name, "mixed", layer=18, expansion=16, alpha=1.0, hf=True).cuda().half()
+vis = MaxAct(model, autoencoder, dataset, tokenizer, batches=2**4, batch_size=2**5)
 # %%
-d = coder.down / coder.down.norm(dim=0, keepdim=True)
+d = autoencoder.down / autoencoder.down.norm(dim=0, keepdim=True)
 g = d.T @ d
 
 gpr = generalized_effective_dimension(g)
 px.scatter(y=gpr.cpu(), x=list(range(gpr.size(-1))), template='plotly_white', title="Number of active elements in the overlap matrix").show()
 print(gpr.topk(300).indices.tolist()[250:])
 # %%
-# ---- Manifolds in the paper ----
+# ---- manifolds in the paper ----
 # idx = 5881 # conjunction clusters
 # idx = 3569 # year circle
-# idx = 7745 # new triangle
-idx = 15690 # negation directions
+idx = 7745 # new triangle
+# idx = 15690 # negation directions
 
-# ---- Other manifolds ----
+# ---- other manifolds ----
 # idx = 13346 # make/made
 # idx = 3732 # predict numerals, numeric literals
 # idx = 3294 # numbers in years
@@ -60,12 +56,12 @@ fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False).show()
 
 vals, inds = g[idx].abs().topk(k=10)
 vis(inds[:3].tolist(), k=2)
-# 
-form = einsum(vals, coder.left[inds], coder.right[inds], "out, out in1, out in2 -> in1 in2")
+
+form = einsum(vals, autoencoder.left[inds], autoencoder.right[inds], "out, out in1, out in2 -> in1 in2")
 # form = einsum(torch.randn(5), torch.randn(5, 1024), torch.randn(5, 1024), "out, out in1, out in2 -> in1 in2").to("cuda")
 form = 0.5 * (form + form.T)
 
-manifold = Manifold(dataset, coder.hooked, tokenizer, form, max_steps=2**7)
+manifold = Manifold(model, autoencoder, dataset, tokenizer, form, batches=2**6)
 manifold.spectrum().show()
 
 manifold(k=2**16)

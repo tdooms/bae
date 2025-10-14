@@ -24,15 +24,15 @@ class Hooked:
             self.activations = dict(input=input[0], output=output)[kind]
         
         return module.inner.register_forward_hook(cache)
-        
-    def __call__(self, *args, **kwargs):
+    
+    def __call__(self, output=False, *args, **kwargs):
         handle = self.hook(self.module)
-        _ = self.model(*args, **kwargs)
+        result = self.model(*args, **kwargs)
         _ = handle.remove()
         
         acts = self.activations
         self.activations = None
-        return acts
+        return (result, acts) if output else acts
     
 class MultiHooked:
     """A simple combination of NNSight and TransformerLens since I didn't want either as dependency."""

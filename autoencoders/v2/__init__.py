@@ -1,1 +1,0 @@
-from autoencoders.v2.vanilla import Vanilla

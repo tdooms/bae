@@ -9,6 +9,7 @@ from tqdm import tqdm
 from einops import einsum
 
 from autoencoders import Autoencoder
+from autoencoders.utils import Input, Hooked
 from figures.constants import FONT, COLORS
 
 import pandas as pd
@@ -33,7 +34,8 @@ batch = next(iter(loader))
 batch = {k: v.cuda() for k, v in batch.items() if isinstance(v, torch.Tensor)}
 
 def incremental(_coder):
-    features = _coder(**batch)['features'].half()
+    hooked = Hooked(model, Input(model.model.layers[_coder.config.layer]))
+    features = _coder(hooked(**batch).half())
     
     kernel = (_coder.left @ _coder.left.T) * (_coder.right @ _coder.right.T)
     mask = torch.zeros_like(kernel[0])
@@ -47,11 +49,11 @@ def incremental(_coder):
     return pd.DataFrame({'x': x, 'recons': recons, 'kind': [coder.config.kind] * len(recons)})
 
 # Get reconstructions for ordered coder
-coder = Autoencoder.load(model, "ordered", layer=18, expansion=16, alpha=0.1, tags=[], hf=True).eval().half()
+coder = Autoencoder.load(name, "ordered", layer=18, expansion=16, alpha=0.1, tags=[], hf=True).cuda().half()
 ordered = incremental(coder)
 
 # Get reconstructions for vanilla coder
-coder = Autoencoder.load(model, "vanilla", layer=18, expansion=16, alpha=0.1, tags=[], hf=True).eval().half()
+coder = Autoencoder.load(name, "vanilla", layer=18, expansion=16, alpha=0.1, tags=[], hf=True).cuda().half()
 vanilla = incremental(coder)
 
 # Reorder vanilla reconstructions by largest increases
