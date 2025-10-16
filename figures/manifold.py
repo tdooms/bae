@@ -39,7 +39,7 @@ print(gpr.topk(300).indices.tolist()[250:])
 # ---- manifolds in the paper ----
 # idx = 5881 # conjunction clusters
 # idx = 3569 # year circle
-idx = 7745 # new triangle
+# idx = 7745 # new triangle
 # idx = 15690 # negation directions
 
 # ---- other manifolds ----
@@ -50,6 +50,9 @@ idx = 7745 # new triangle
 # idx = 13858 # make
 # idx = 9788 # this/these/those
 # idx = 15612 # none/not/any/little (connected clusters)
+
+# ---- random manifolds ----
+idx = 3
 
 fig = px.histogram(g[idx].cpu(), template='plotly_white', log_y=True, width=400, height=200, range_x=[-1.1, 1.1])
 fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False).show()
@@ -65,6 +68,8 @@ manifold = Manifold(model, autoencoder, dataset, tokenizer, form, batches=2**6)
 manifold.spectrum().show()
 
 manifold(k=2**16)
+# %%
+
 # %%
 manifold.to_dataframe(2**16).to_csv("public/data/negation-directions.csv")
 # %%

@@ -90,4 +90,5 @@ class Manifold:
         fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
         fig.update_layout(scene=dict(xaxis_visible=False, yaxis_visible=False, zaxis_visible=False))
         fig.update_layout(coloraxis_showscale=False)
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         return fig

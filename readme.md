@@ -10,7 +10,7 @@ This repo uses [uv](https://docs.astral.sh/uv/). The setup should be as easy as 
 uv sync
 ```
 
-Once setup, an autoencoder can be loaded as follows:
+Once set up, an autoencoder can be loaded as follows:
 
 ```python
 # Load the autoencoder used to generate the manifold from the paper
