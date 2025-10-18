@@ -2,16 +2,21 @@ import torch
 
 from torch import nn
 from quimb.tensor import Tensor
+from itertools import combinations_with_replacement
 
 from autoencoders.base import Autoencoder, Config
+from autoencoders.utils import tiled_masked_product, tiled_product
 
 class Combined(Autoencoder, kind="combined"):
     """A tensor-based autoencoder class which mixes its features."""
-    def __init__(self, model, config) -> None:
-        super().__init__(model, config)
+    def __init__(self, config) -> None:
+        super().__init__(config)
+        self.tiles = 4
+        self.inds = list(combinations_with_replacement(range(0, self.tiles), 2))
         
-        self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1).flip(0), persistent=False)
-        self.htail = nn.Buffer(self.counts.reciprocal().cumsum(0).flip(0), persistent=False)
+        ints = torch.arange(1, self.config.d_features + 1, dtype=torch.float).flip(0)
+        self.counts = nn.Buffer(ints / self.config.d_features, persistent=False)
+        self.htail = nn.Buffer(ints.reciprocal().cumsum(0).flip(0), persistent=False)
 
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
@@ -22,10 +27,8 @@ class Combined(Autoencoder, kind="combined"):
         torch.nn.init.orthogonal_(self.down.data)
 
     @staticmethod
-    def from_config(model, **kwargs):
-        return Combined(model, Config(kind="combined", **kwargs))
-    def features(self, acts):
-        return nn.functional.linear(acts, self.left) * nn.functional.linear(acts, self.right)
+    def from_config(**kwargs):
+        return Combined(Config(kind="combined", **kwargs))
     
     def network(self, mod='inp'):
         u = torch.stack([self.left + self.right, self.left - self.right], dim=0)
@@ -35,30 +38,31 @@ class Combined(Autoencoder, kind="combined"):
              & Tensor(self.down, inds=[f'h:{mod}', f'f:{mod}'], tags=['D']) \
              & Tensor(torch.tensor([1, -1], **self._like()) / 4.0, inds=[f's:{mod}'], tags=['S'])
     
+    def forward(self, x):
+        x = x * x.square().sum(dim=-1, keepdim=True).rsqrt()
+        return nn.functional.linear(x, self.left) * nn.functional.linear(x, self.right)
+    
     @torch.compile(fullgraph=True)
-    def loss(self, acts, mask, alpha):
+    def loss_fn(self, x, mask, scale):
         # Compute the features
-        f = self.features(acts)
+        f = (self(x) * mask[..., None]).flatten(0, -2)
         h = nn.functional.linear(f, self.down)
         g = nn.functional.linear(h, self.down.T)
         
-        # Compute the regularisation term
-        density = hoyer_density(f)
-        reg = (density * self.htail).mean()
-        
-        # Compute the reconstruction, ordering and importance kernels
-        recons = blocked_masked_inner(g, self.left, self.right, self.inds)
-        cross = (f * g * self.counts).mean(-1)
-        loss = masked_mean(recons - 2 * cross + 1.0, mask) + alpha * reg
+        # Compute the regularisation term (mean of average prefix sum, phew)
+        density = (f.norm(p=1, dim=0) / f.norm(p=2, dim=0) - 1.0).mean() / (f.size(0)**0.5 - 1.0)
+        reg = self.config.alpha * scale * (density * self.htail).mean()
+
+        # Compute the self and cross terms of the loss and combine them
+        recons = tiled_masked_product(g, self.left, self.right, self.tiles, self.inds)
+        cross = (f * g * self.counts).sum(-1)
+        loss = ((recons - 2 * cross).sum() / mask.sum()) + 1.0
         
         # Compute the reconstruction error without the regularisation
+        # This is solely for logging purposes and can be removed if needed
         with torch.no_grad():
-            recons = blocked_inner(f, self.left, self.right, self.inds)
-            error = masked_mean(recons - 2 * h.square().sum(-1) + 1.0, mask)
-        
-        return loss, f, dict(mse=error, reg=density.mean())
-    
-    def optimizers(self, max_steps, lr=0.03):
-        optimizer = Muon(list(self.parameters()), lr=lr, weight_decay=0, nesterov=False)
-        scheduler = LinearLR(optimizer, start_factor=1.0, end_factor=0.0, total_iters=max_steps)
-        return optimizer, scheduler
+            recons = tiled_product(g, self.left, self.right, self.tiles, self.inds)
+            cross = h.square().sum(-1)
+            error = ((recons - 2 * cross).sum() / mask.sum()) + 1.0
+
+        return loss + reg, dict(mse=error, reg=density.mean())

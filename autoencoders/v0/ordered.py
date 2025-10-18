@@ -15,8 +15,9 @@ class Ordered(Autoencoder, kind="ordered"):
         self.tiles = 4
         self.inds = list(combinations_with_replacement(range(0, self.tiles), 2))
         
-        self.counts = nn.Buffer(torch.arange(1, self.config.d_features + 1, dtype=torch.float).flip(0), persistent=False)
-        self.htail = nn.Buffer(self.counts.reciprocal().cumsum(0).flip(0), persistent=False)
+        ints = torch.arange(1, self.config.d_features + 1, dtype=torch.float).flip(0)
+        self.counts = nn.Buffer(ints / self.config.d_features, persistent=False)
+        self.htail = nn.Buffer(ints.reciprocal().cumsum(0).flip(0), persistent=False)
 
         self.left = nn.Parameter(torch.empty(config.d_features, config.d_model))
         self.right = nn.Parameter(torch.empty(config.d_features, config.d_model))
@@ -41,22 +42,22 @@ class Ordered(Autoencoder, kind="ordered"):
     
     @torch.compile(fullgraph=True)
     def loss_fn(self, x, mask, scale):
-        features = (self(x) * mask[..., None]).flatten(0, -2)
+        f = (self(x) * mask[..., None]).flatten(0, -2)
         
         # Compute the regularisation term (mean of average prefix sum, phew)
-        density = (features.norm(p=1, dim=0) / features.norm(p=2, dim=0) - 1.0).mean() / (features.size(0)**0.5 - 1.0)
+        density = (f.norm(p=1, dim=0) / f.norm(p=2, dim=0) - 1.0).mean() / (f.size(0)**0.5 - 1.0)
         reg = self.config.alpha * scale * (density * self.htail).mean()
         
         # Compute the self and cross terms of the loss and combine them
-        recons = tiled_masked_product(features, self.left, self.right, self.tiles, self.inds)
-        cross = (features.square() * self.counts).mean(-1)
+        recons = tiled_masked_product(f, self.left, self.right, self.tiles, self.inds)
+        cross = (f.square() * self.counts).sum(-1)
         loss = ((recons - 2 * cross).sum() / mask.sum()) + 1.0
         
         # Compute the reconstruction error without the regularisation
         # This is solely for logging purposes and can be removed if needed
         with torch.no_grad():
-            recons = tiled_product(features, self.left, self.right, self.tiles, self.inds)
-            cross = features.square().mean(-1)
+            recons = tiled_product(f, self.left, self.right, self.tiles, self.inds)
+            cross = f.square().sum(-1)
             error = ((recons - 2 * cross).sum() / mask.sum()) + 1.0
         
         return loss + reg, dict(mse=error, reg=density.mean())

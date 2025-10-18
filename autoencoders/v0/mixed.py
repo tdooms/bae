@@ -47,6 +47,7 @@ class Mixed(Autoencoder, kind="mixed"):
         
         # Compute the regularisation term
         density = (f.norm(p=1, dim=0) / f.norm(p=2, dim=0) - 1.0).mean() / (f.size(0)**0.5 - 1.0)
+        reg = scale * self.config.alpha * density
         
         # Compute the self and cross terms of the loss
         recons = tiled_product(g, self.left, self.right, self.tiles, self.inds)
@@ -54,4 +55,4 @@ class Mixed(Autoencoder, kind="mixed"):
         
         # Compute the reconstruction and the loss
         error = ((recons - 2 * cross).sum() / mask.sum()) + 1.0
-        return error + scale * self.config.alpha * density, dict(mse=error, reg=density)
+        return error + reg, dict(mse=error, reg=density)

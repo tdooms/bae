@@ -30,11 +30,11 @@ dataset = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="t
 dataset = dataset.map(tokenize, batched=True)
 # %%
 max_steps = 2**10
-project = "bae"
-# project = None
+# project = "bae"
+project = None
 
 params = dict(d_model=model.config.hidden_size, layer=18, expansion=16, alpha=0.1, tags=['test'])
-autoencoder = Autoencoder.from_config("mixed", **params).cuda().type(torch.bfloat16)
+autoencoder = Autoencoder.from_config("combined", **params).cuda().type(torch.bfloat16)
 
 optimizer = Muon(list(autoencoder.parameters()), lr=1.0, weight_decay=0, nesterov=True, momentum=0.95)
 scheduler = LinearLR(optimizer, start_factor=0.03, end_factor=0.0, total_iters=max_steps)

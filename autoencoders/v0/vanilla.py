@@ -38,12 +38,12 @@ class Vanilla(Autoencoder, kind="vanilla"):
     @torch.compile(fullgraph=True)
     def loss_fn(self, x, mask, scale):
         # Mask input and compute features and their hoyer density
-        features = (self(x) * mask[..., None]).flatten(0, -2)
-        density = (features.norm(p=1, dim=0) / features.norm(p=2, dim=0) - 1.0).mean() / (features.size(0)**0.5 - 1.0)
+        f = (self(x) * mask[..., None]).flatten(0, -2)
+        density = (f.norm(p=1, dim=0) / f.norm(p=2, dim=0) - 1.0).mean() / (f.size(0)**0.5 - 1.0)
 
         # Compute the reconstruction error terms
-        recons = tiled_product(features, self.left, self.right, self.tiles, self.inds)
-        cross = features.square().sum(-1)
+        recons = tiled_product(f, self.left, self.right, self.tiles, self.inds)
+        cross = f.square().sum(-1)
 
         # Compute the (masked) mean of the reconstruction errors (x^2 - 2xy + 1) * mask / mask.sum()
         error = ((recons - 2 * cross).sum() / mask.sum()) + 1.0
